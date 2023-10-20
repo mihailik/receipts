@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="theme-color" content="black" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta property="og:title" content="Catch Rest">
+  <meta property="og:type" content="article" />
+  <meta property="og:description" content="Catch Rest">
+  <meta name="twitter:image:alt" content="Catch Rest">
+  <meta name="twitter:card" content="summary_large_image">
+  <title>ATLAS</title>
+  <script>
+    (function () {
+      var baseUrl = getBaseUrl(location.pathname, location.protocol, location.host);
+      if (baseUrl) {
+        var inject = '<base href="' + baseUrl + '">';
+        document.write(inject);
+      }
+
+      function getBaseUrl(pathname, protocol, host) {
+      }
+    })()
+  </script>
+  <style>
+    html {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+
+      background: white;
+      color: black;
+      font-family:
+        -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol",
+        "Arial Unicode";
+    }
+
+    *,
+    *:before,
+    *:after {
+      box-sizing: inherit;
+    }
+
+    body {
+      background: black; color: white;
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family:
+        -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol",
+        "Arial Unicode";
+    }
+    input, textarea, button {
+      font-family: inherit;
+    }
+    urlbar-background {background-color: black !important;}
+    #urlbar-background {background-color: black !important;}
+    urlbar-input-container {color: white !important;}
+    #urlbar-input-container {color: white !important;}
+
+  </style>
+</head>
+
+<body>
+
+  <script src="index.js"></script>
+  <script src="lib.js"></script>
+  <script> receipts("libraries") </script>
+</body>
+
+</html>
