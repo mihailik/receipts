@@ -46,7 +46,8 @@ function receipts() {
   text-align: center;
   padding-bottom: 0;
   margin-bottom: 0;
-  text-shadow: 1px 1px 13px white, 1px 1px 1px #ffffff87, -1px -1px 1px #ffffff63;
+  background: linear-gradient(to top, white -0.25em, transparent 0.5em);
+  text-shadow: 1px 1px 13px white, 1px 1px 2px #fffffff2, -1px -1px 2px #ffffffe6;
 }
 
 .searchPane {
@@ -111,7 +112,8 @@ function receipts() {
   grid-row-start: 1;
   grid-row-end: 4;
   grid-column: 1;
-  background: no-repeat 50% 50% fixed;
+  background: no-repeat center center;
+  background-size: cover;
 }
 
 .statsPane {
