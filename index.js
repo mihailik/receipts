@@ -577,7 +577,7 @@ function receipts() {
           // sort longer words match first
           .sort((w1, w2) => w2.length - w1.length || (w1 > w2 ? 1 : w1 < w2 ? -1 : 0))
           // generate a regexp out of word
-          .map(word => '(' + word.replace(/[|\\{}()[\]^$+*?.]/g, '\\$&') + ')')
+          .map(word => '(' + word.toLowerCase().replace(/[|\\{}()[\]^$+*?.]/g, '\\$&') + ')')
           .join('|'),
         'gi');
 
@@ -1370,7 +1370,7 @@ function receipts() {
   function getHandleBucket(shortHandle) {
     const first2Letters =
       /\d/.test(shortHandle.charAt(0)) ? '00' :
-        shortHandle.replace(/[^a-z0-9]/g, '').replace(/[1-9]+/g, '0').slice(0, 2).toLowerCase();
+        shortHandle.replace(/[^a-z0-9]/gi, '').replace(/[1-9]+/gi, '0').slice(0, 2).toLowerCase();
     return first2Letters.charAt(0) + '/' + first2Letters;
   }
 
