@@ -17,7 +17,7 @@ function receipts() {
 </div>
 <div class=statsPane>
 </div>
-<div class=searchLink></div>
+<div class=closeLink></div>
 <div class=resultsPane>
 <div style="padding: 1em;">
   Searching BlueSky activity of a user: to verify their identity, and to find their receipts.
@@ -109,6 +109,14 @@ function receipts() {
   background: #e2f1ff;
 }
 
+.searchPane .autocomplete .autocomplete-item.selected {
+  background: #b3dbf9;
+}
+
+.searchPane .autocomplete .autocomplete-item.selected:hover {
+  background: #8fc7f1;
+}
+
 .banner {
   grid-row-start: 1;
   grid-row-end: 4;
@@ -159,9 +167,29 @@ function receipts() {
   overflow: auto;
 }
 
-.searchLink {
-  transform: scale(4) rotate(41deg);
-  transform-origin: top;
+.resultsPane .post-list {
+  padding: 1em;
+}
+
+.resultsPane .post-list .post {
+  padding: 0.5em 0;
+}
+
+.resultsPane .post-list .post .post-content-line-timestamp {
+  color: royalblue;
+}
+
+.resultsPane .post-list .post .post-content-line-text {
+  padding-top: 0.25em;
+}
+
+.closeLink {
+  position: relative;
+  transform: scale(1.5);
+  width: 1em;
+  height: 1em;
+  margin-top: 0.7em;
+  margin-right: 0.7em;
   cursor: pointer;
   justify-self: end;
   align-self: start;
@@ -169,25 +197,11 @@ function receipts() {
   grid-row: 1;
   grid-column: 1;
   color: black;
-  filter: drop-shadow(1px 0px 2px #FFFFFFD0) drop-shadow(-0.5px 0px 1px #FFFFFFD0);
+  border-radius: 2em;
+  background-image: linear-gradient(-45deg, transparent 0%, transparent 46%, currentColor 46%, currentColor 56%,transparent 56%, transparent 100%), -webkit-linear-gradient(45deg, transparent 0%, transparent 46%, currentColor 46%, currentColor 56%,transparent 56%, transparent 100%);
+  filter: drop-shadow(0px 0px 1px white) drop-shadow(3px -3px 10px white) drop-shadow(10px -10px 30px white);
 }
 
-.searchLink::before {
-  content: '';
-  display: inline-block;
-  border: solid 1.3px currentColor;
-  border-radius: 1em;
-  width: 0.5em;
-  height: 0.5em;
-}
-
-.searchLink::after {
-  content: '';
-  display: inline-block;
-  border-top: solid 1px currentColor;
-  width: 0.3em;
-  height: 0.25em;
-}
 
 @media (max-width: 800px) {
   #receiptsHost {
@@ -233,7 +247,7 @@ function receipts() {
        *  searchINPUT: HTMLInputElement & { autocompleteDIV?: HTMLDivElement },
        *  statsPane: HTMLElement,
        *  resultsPane: HTMLElement,
-       *  searchLink: HTMLElement
+       *  closeLink: HTMLElement
        * }}
        */
       const dom = /** @type {*} */({});
@@ -382,6 +396,70 @@ function receipts() {
       return /** @type {*} */(el);
     }
 
+    function getInputSelectionShortDID(searchINPUT) {
+      if (!searchINPUT.autocompleteDIV) return;
+      const items = [...searchINPUT.autocompleteDIV.querySelectorAll('.autocomplete-item')];
+      for (const item of items) {
+        if (item.classList.contains('selected')) return item.shortDID;
+      }
+    }
+
+    /** @param {KeyboardEvent} e */
+    function handleInputKeydown(e) {
+      const ArrowDown = 40;
+      const ArrowUp = 38;
+      if (e.keyCode === ArrowDown) {
+        e.preventDefault();
+        shiftSelection(+1);
+      } else if (e.keyCode === ArrowUp) {
+        e.preventDefault();
+        shiftSelection(-1);
+      } else if (e.keyCode === 13) {
+        e.preventDefault();
+        acceptSelection();
+      } else if (e.keyCode === 27) {
+        e.preventDefault();
+        cancelEdit();
+      }
+
+      function shiftSelection(direction) {
+        if (!dom.searchINPUT.autocompleteDIV) return;
+        const items = [...dom.searchINPUT.autocompleteDIV.querySelectorAll('.autocomplete-item')];
+        if (!items.length) return;
+
+        const selectedShortDID = getInputSelectionShortDID(dom.searchINPUT);
+        const selectedIndex = items.findIndex(item => /** @type {*} */(item).shortDID === selectedShortDID);
+
+        const nextSelectedIndex = selectedIndex < 0 ?
+          (direction > 0 ? 0 : items.length - 1) :
+          Math.max(0, Math.min(items.length - 1, selectedIndex + direction));
+
+        if (nextSelectedIndex !== selectedIndex) {
+          items[selectedIndex]?.classList.remove('selected');
+          items[nextSelectedIndex]?.classList.add('selected');
+        }
+      }
+
+      function acceptSelection() {
+        const items = [...(dom.searchINPUT.autocompleteDIV?.querySelectorAll('.autocomplete-item') || [])];
+        if (!items.length) return;
+
+        let navToShortDID = getInputSelectionShortDID(dom.searchINPUT);
+        if (!navToShortDID) {
+          navToShortDID =/** @type {*} */(items[0]).shortDID;
+          if (!navToShortDID) return;
+        }
+
+        // @ts-ignore
+        const navToShortHandle = items.find(item => item.shortDID === navToShortDID)?.shortHandle;
+
+        navigateToSearchAccount(navToShortDID, navToShortHandle, undefined);
+      }
+
+      function cancelEdit() {
+      }
+    }
+
     var handleSearchType_debounceTimeout;
     function handleSearchType() {
       clearTimeout(handleSearchType_debounceTimeout);
@@ -426,6 +504,8 @@ function receipts() {
         dom.searchINPUT.autocompleteDIV.style.display = 'block';
       }
 
+      const selectedShortDID = getInputSelectionShortDID(dom.searchINPUT);
+
       dom.searchINPUT.autocompleteDIV.innerHTML = '';
       for (const match of searchMatches) {
         const matchElem = elem('div', {
@@ -438,6 +518,9 @@ function receipts() {
               elem('span', { className: 'autocomplete-item-displayName', textContent: match.displayName }),
           ]
         });
+        /** @type {*} */(matchElem).shortDID = match.shortDID;
+        /** @type {*} */(matchElem).shortHandle = match.shortHandle;
+        if (match.shortDID === selectedShortDID) matchElem.classList.add('selected');
 
         matchElem.onclick = () => {
           navigateToSearchAccount(match.shortDID, match.shortHandle, match.displayName);
@@ -521,11 +604,14 @@ function receipts() {
       displaySearchResultsFor(shortDID, shortHandle, displayName);
     }
 
+    /** @type {{ [shortDID: string]: { fetchMore(): Promise, posts: any[] }}} */
+    var postsByDID;
+
     async function displaySearchResultsFor(shortDID, shortHandle, displayName) {
 
       async function initialLoad() {
         dom.searchPane.style.display = 'none';
-        dom.searchLink.style.display = 'block';
+        dom.closeLink.style.display = 'block';
         if (dom.searchINPUT.autocompleteDIV) {
           dom.searchINPUT.autocompleteDIV.style.display = 'none';
           dom.searchINPUT.autocompleteDIV.innerHTML = '';
@@ -650,10 +736,6 @@ function receipts() {
         }
       }
 
-
-      /** @type {{ [shortDID: string]: { fetchMore(): Promise, posts: any[] }}} */
-      var postsByDID;
-
       async function startFetchingPosts() {
         if (!postsByDID) postsByDID = {};
         const fetcher = postsByDID[shortDID] || (postsByDID[shortDID] = createHistoryFetcher(shortDID));
@@ -675,74 +757,55 @@ function receipts() {
        */
       function reflectRecords(posts, panel) {
         panel.innerHTML = '';
+        const postList = elem('div', {
+          className: 'post-list',
+          parent: panel
+        });
+
         for (const post of posts) {
-          const postElem = elem('div', {
-            className: 'post',
-            parent: panel,
-            children: [
-              elem('div', {
-                className: 'post-avatar',
-                children: [
-                  elem('img', {
-                    className: 'post-avatar-image',
-                    src: 'https://bsky.social/xrpc/com.atproto.sync.getBlob?did=' + unwrapShortDID(post.did) + '&cid=' + post.avatarCid,
-                  })
-                ]
-              }),
-              elem('div', {
-                className: 'post-content',
-                children: [
-                  elem('div', {
-                    className: 'post-content-line',
-                    children: [
-                      elem('span', {
-                        className: 'post-content-line-handle',
-                        textContent: '@' + unwrapShortHandle(post.handle)
-                      }),
-                      elem('span', {
-                        className: 'post-content-line-did',
-                        children: [
-                          elem('span', {
-                            className: 'post-content-line-did-prefix',
-                            textContent: 'did:plc:'
-                          }),
-                          unwrapShortDID(post.did)
-                        ]
-                      })
-                    ]
-                  }),
-                  elem('div', {
-                    className: 'post-content-line',
-                    children: [
-                      elem('span', {
-                        className: 'post-content-line-timestamp',
-                        textContent: new Date(post.timestamp).toLocaleString()
-                      })
-                    ]
-                  }),
-                  elem('div', {
-                    className: 'post-content-line',
-                    children: [
-                      elem('span', {
-                        className: 'post-content-line-text',
-                        textContent: post.text
-                      })
-                    ]
-                  }),
-                  post.mediaCid && elem('div', {
-                    className: 'post-content-line',
-                    children: [
-                      elem('img', {
-                        className: 'post-content-line-image',
-                        src: 'https://bsky.social/xrpc/com.atproto.sync.getBlob?did=' + unwrapShortDID(post.did) + '&cid=' + post.mediaCid,
-                      })
-                    ]
-                  })
-                ]
-              })
-            ]
-          });
+          const postElem = renderPost(post);
+          postList.appendChild(postElem);
         }
+      }
+
+      /**
+       * @param {import ('./lib/node_modules/@atproto/api').AppBskyFeedPost.Record} post
+       */
+      function renderPost(post) {
+        const postElem = elem('div', {
+          className: 'post',
+          children: [
+            elem('div', {
+              className: 'post-content',
+              children: [
+                elem('div', {
+                  className: 'post-content-line-timestamp',
+                  textContent: new Date(post.createdAt).toLocaleString()
+                }),
+                elem('div', {
+                  className: 'post-content-line',
+                  children: [
+                    elem('span', {
+                      className: 'post-content-line-text',
+                      textContent: post.text
+                    })
+                  ]
+                }),
+                post.embed?.images?.length && elem('div', {
+                  className: 'post-content-line',
+                  children: [
+                    elem('img', {
+                      className: 'post-content-line-image',
+                      src: 'https://bsky.social/xrpc/com.atproto.sync.getBlob?did=' + unwrapShortDID(shortDID) + '&cid=' + post.embed?.images[0].image.ref,
+                    })
+                  ]
+                })
+              ]
+            })
+          ]
+        });
+
+        return postElem;
       }
 
       function createHistoryFetcher(shortDID) {
@@ -789,12 +852,12 @@ function receipts() {
 
     function displaySearchPage(preloadSearchText) {
       dom.searchINPUT.oninput = handleSearchType;
-      dom.searchINPUT.onkeydown = handleSearchType;
+      dom.searchINPUT.onkeydown = handleInputKeydown;
       dom.searchINPUT.onkeyup = handleSearchType;
       dom.searchINPUT.onchange = handleSearchType;
 
       dom.banner.style.backgroundImage = '';
-      dom.searchLink.style.display = 'none';
+      dom.closeLink.style.display = 'none';
       dom.titleH2.textContent = ' History search:';
       dom.statsPane.innerHTML = '';
       dom.searchPane.style.display = 'block';
@@ -808,9 +871,10 @@ function receipts() {
       const urlParams = new URLSearchParams(window.location.search);
       const did = urlParams.get('did');
       const handle = urlParams.get('handle');
-      dom.searchLink.style.display = 'block';
-      dom.searchLink.onclick = () => {
+      dom.closeLink.style.display = 'block';
+      dom.closeLink.onclick = () => {
         history.pushState({}, '', 'index.html');
+        dom.resultsPane.textContent = 'Pick an account to search history.';
         displaySearchPage();
       };
 
@@ -1007,9 +1071,10 @@ function receipts() {
                   console.log(' ' + JSON.stringify(descr));
                   break;
                 } catch (error) {
-                  if (tryCount > 5 && /internal error/i.test(error?.message || '')) {
+                  if (tryCount > 6) {
                     console.log(' - falwed account, skip.');
                     console.log(error);
+                    console.log('\n\n\n');
                     break;
                   }
 
