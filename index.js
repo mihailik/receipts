@@ -7,6 +7,8 @@ function receipts() {
       const host = elem('div', {
         id: 'receiptsHost',
         innerHTML: `
+<div class=banner>
+</div>
 <div class=titlePane>
   <h2> History search: </h2>
 </div>
@@ -20,6 +22,7 @@ function receipts() {
   Searching BlueSky activity of a user: to verify their identity, and to find their receipts.
 </div>
 </div>
+
 <style>
 #receiptsHost {
   position: fixed;
@@ -35,6 +38,7 @@ function receipts() {
 
 .titlePane {
   grid-row: 2;
+  grid-column: 1;
 }
 
 .titlePane h2 {
@@ -42,11 +46,13 @@ function receipts() {
   text-align: center;
   padding-bottom: 0;
   margin-bottom: 0;
+  text-shadow: 1px 1px 13px white, 1px 1px 1px #ffffff87, -1px -1px 1px #ffffff63;
 }
 
 .searchPane {
   grid-row: 3;
   grid-row: 3;
+  grid-column: 1;
   position: relative;
   padding: 2em;
   padding-top: 1em;
@@ -101,6 +107,13 @@ function receipts() {
   background: #e2f1ff;
 }
 
+.banner {
+  grid-row-start: 1;
+  grid-row-end: 4;
+  grid-column: 1;
+  background: no-repeat 50% 50% fixed;
+}
+
 .statsPane {
   grid-row: 4;
   padding: 2em;
@@ -113,13 +126,15 @@ function receipts() {
   margin-right: 0.7em;
 }
 
-.statsPane .displayName {
+.statsPane .handle {
+  padding-bottom: 0.5em;
   display: block;
 }
 
 .statsPane .did {
   font-size: 90%;
   opacity: 0.8;
+  display: block;
 }
 
 .statsPane .did .did-prefix {
@@ -146,6 +161,7 @@ function receipts() {
       /**
        * @type {{
        *  host: HTMLElement,
+       *  banner: HTMLElement,
        *  titlePane: HTMLElement,
        *  titleH2: HTMLElement,
        *  searchPane: HTMLElement,
@@ -484,9 +500,6 @@ function receipts() {
         /** @type {HTMLElement} */
         let didElem;
 
-        /** @type {HTMLElement} */
-        let displayNameElem;
-
         const titleLine = elem('div', {
           parent: dom.statsPane,
           className: 'title',
@@ -516,12 +529,7 @@ function receipts() {
                 }) || undefined,
                 shortDID
               ]
-            }),
-            ' ',
-            displayNameElem = elem('span', {
-              className: 'displayName',
-              textContent: displayName
-            }),
+            })
           ]
         });
 
@@ -538,7 +546,6 @@ function receipts() {
           avatar: avatarElem,
           handle: handleElem,
           did: didElem,
-          displayName: displayNameElem,
           bio: bioElem
         };
 
@@ -557,7 +564,7 @@ function receipts() {
           const displayName = profileRec?.displayName;
           const description = profileRec?.description;
 
-          displayNameElem.textContent = displayName;
+          dom.titleH2.textContent = displayName;
           if (avatarUrl) {
             avatarElem.innerHTML = '';
             elem('img', {
@@ -565,6 +572,9 @@ function receipts() {
               src: avatarUrl,
               parent: avatarElem,
             });
+          }
+          if (bannerUrl) {
+            dom.banner.style.backgroundImage = 'url(' + bannerUrl + ')';
           }
 
           if (description) {
