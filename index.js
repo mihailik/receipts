@@ -156,6 +156,7 @@ function receipts() {
   grid-row-start: 1;
   grid-row-end: 7;
   grid-column: 2;
+  overflow: auto;
 }
 
 .searchLink {
@@ -649,8 +650,141 @@ function receipts() {
         }
       }
 
+
+      /** @type {{ [shortDID: string]: { fetchMore(): Promise, posts: any[] }}} */
+      var postsByDID;
+
+      async function startFetchingPosts() {
+        if (!postsByDID) postsByDID = {};
+        const fetcher = postsByDID[shortDID] || (postsByDID[shortDID] = createHistoryFetcher(shortDID));
+
+        fetcher.fetchMore();
+
+        reflectRecords(fetcher.posts, dom.resultsPane);
+
+        fetcher.fetchMore().then(continuePresenting);
+
+        function continuePresenting() {
+          reflectRecords(fetcher.posts, dom.resultsPane);
+        }
+      }
+
+      /**
+       * @param {import ('./lib/node_modules/@atproto/api').AppBskyFeedPost.Record[]} posts
+       * @param {HTMLElement} panel
+       */
+      function reflectRecords(posts, panel) {
+        panel.innerHTML = '';
+        for (const post of posts) {
+          const postElem = elem('div', {
+            className: 'post',
+            parent: panel,
+            children: [
+              elem('div', {
+                className: 'post-avatar',
+                children: [
+                  elem('img', {
+                    className: 'post-avatar-image',
+                    src: 'https://bsky.social/xrpc/com.atproto.sync.getBlob?did=' + unwrapShortDID(post.did) + '&cid=' + post.avatarCid,
+                  })
+                ]
+              }),
+              elem('div', {
+                className: 'post-content',
+                children: [
+                  elem('div', {
+                    className: 'post-content-line',
+                    children: [
+                      elem('span', {
+                        className: 'post-content-line-handle',
+                        textContent: '@' + unwrapShortHandle(post.handle)
+                      }),
+                      elem('span', {
+                        className: 'post-content-line-did',
+                        children: [
+                          elem('span', {
+                            className: 'post-content-line-did-prefix',
+                            textContent: 'did:plc:'
+                          }),
+                          unwrapShortDID(post.did)
+                        ]
+                      })
+                    ]
+                  }),
+                  elem('div', {
+                    className: 'post-content-line',
+                    children: [
+                      elem('span', {
+                        className: 'post-content-line-timestamp',
+                        textContent: new Date(post.timestamp).toLocaleString()
+                      })
+                    ]
+                  }),
+                  elem('div', {
+                    className: 'post-content-line',
+                    children: [
+                      elem('span', {
+                        className: 'post-content-line-text',
+                        textContent: post.text
+                      })
+                    ]
+                  }),
+                  post.mediaCid && elem('div', {
+                    className: 'post-content-line',
+                    children: [
+                      elem('img', {
+                        className: 'post-content-line-image',
+                        src: 'https://bsky.social/xrpc/com.atproto.sync.getBlob?did=' + unwrapShortDID(post.did) + '&cid=' + post.mediaCid,
+                      })
+                    ]
+                  })
+                ]
+              })
+            ]
+          });
+        }
+      }
+
+      function createHistoryFetcher(shortDID) {
+        const atClient = new atproto_api.BskyAgent({ service: 'https://bsky.social/xrpc' });
+
+        let fetchMorePromise;
+
+        let cursor = undefined;
+        const fetcher = {
+          fetchMore,
+          posts: /**@type {import ('./lib/node_modules/@atproto/api').AppBskyFeedPost.Record[]} */([])
+        };
+        return fetcher;
+
+        function fetchMore() {
+          if (!fetchMorePromise) {
+            fetchMorePromise = fetchMoreCore();
+          }
+
+          return fetchMorePromise
+        }
+
+        async function fetchMoreCore() {
+          const posts = await atClient.com.atproto.repo.listRecords({
+            collection: 'app.bsky.feed.post',
+            repo: unwrapShortDID(shortDID),
+            cursor
+          });
+
+          cursor = posts.data.cursor;
+
+          for (const p of posts.data.records) {
+            fetcher.posts.push(/** @type {*} */(p.value));
+          }
+
+          fetchMorePromise = undefined;
+        }
+      }
+
       await initialLoad();
       await loadWithConfirmedArgs();
+      await startFetchingPosts();
     }
 
     function displaySearchPage(preloadSearchText) {
@@ -686,7 +820,7 @@ function receipts() {
         displaySearchPage();
       }
     }
-    
+
 
     const waitForLibrariesLoaded = new Promise((resolve) => {
       // @ts-ignore
@@ -865,15 +999,25 @@ function receipts() {
 
               process.stdout.write('  ' + shortenDID(repo.did));
               const startCall = Date.now();
+              let tryCount = 0;
               while (true) {
                 try {
+                  tryCount++;
                   const descr = await updateAccountInfo(repo.did);
                   console.log(' ' + JSON.stringify(descr));
                   break;
                 } catch (error) {
+                  if (tryCount > 5 && /internal error/i.test(error?.message || '')) {
+                    console.log(' - falwed account, skip.');
+                    console.log(error);
+                    break;
+                  }
+
                   process.stdout.write(
+                    ' ' + (tryCount + 1) + ' ' +
                     /rate/i.test(error?.message || '') ? 'R ' :
                       error?.message);
+
                   const callTime = Date.now() - startCall;
                   const waitTime = (Math.random() * 0.5 + 0.5) * Math.max(callTime, 5000);
                   await new Promise(resolve => setTimeout(resolve, waitTime));
@@ -974,11 +1118,11 @@ function receipts() {
   }
 
   function unwrapShortDID(shortDID) {
-    return shortDID.indexOf(':') < 0 ? 'did:plc:' + shortDID : shortDID;
+    return !shortDID ? shortDID : shortDID.indexOf(':') < 0 ? 'did:plc:' + shortDID : shortDID;
   }
 
   function unwrapShortHandle(shortHandle) {
-    return shortHandle.indexOf('.') < 0 ? shortHandle + '.bsky.social' : shortHandle;
+    return !shortHandle ? shortHandle : shortHandle.indexOf('.') < 0 ? shortHandle + '.bsky.social' : shortHandle;
   }
 
   /** @param {string} handle */
