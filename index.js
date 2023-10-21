@@ -165,6 +165,9 @@ function receipts() {
   grid-row-end: 7;
   grid-column: 2;
   overflow: auto;
+
+  border-left: solid 1px #d4d4d4;
+  box-shadow: inset 3px 0px 8px #00000021;
 }
 
 .resultsPane .post-list {
@@ -185,6 +188,36 @@ function receipts() {
 
 .resultsPane .post-list .post .post-content-line-text {
   padding-top: 0.25em;
+  white-space: pre-wrap;
+}
+
+.resultsPane .search-panel {
+  position: sticky;
+  top: 0;
+  background: #cecece;
+  border-bottom: solid 1px #b1b1b1;
+  border-top: solid 1px #bab6b6;
+  box-shadow: 0px 6px 15px #00000038;
+  padding: 0.5em 1em;
+  display: grid;
+  grid-template-rows: 1fr;
+  grid-template-columns: 1fr;
+}
+
+.resultsPane .search-panel .post-search-input {
+  font-size: inherit;
+  outline: none;
+  border: solid 1px #afafaf;
+  grid-row: 1;
+  grid-column: 1;
+}
+
+.resultsPane .search-panel .post-search-clear {
+  grid-row: 1;
+  grid-column: 1;
+  justify-self: end;
+  padding-right: 0.3em;
+  cursor: pointer;
 }
 
 .closeLink {
@@ -235,6 +268,9 @@ function receipts() {
   .resultsPane {
     grid-row: 5;
     grid-column: 1;
+
+    border-left: none;
+    box-shadow: none;
   }
 }
 
@@ -745,32 +781,104 @@ function receipts() {
         const fetcher = postsByDID[shortDID] || (postsByDID[shortDID] = createHistoryFetcher(shortDID));
 
         fetcher.fetchMore();
-
-        reflectRecords(fetcher.posts, dom.resultsPane);
-
-        fetcher.fetchMore().then(continuePresenting);
-
-        function continuePresenting() {
-          reflectRecords(fetcher.posts, dom.resultsPane);
-        }
+        initSearchUserExperience(fetcher);
       }
 
-      /**
-       * @param {import ('./lib/node_modules/@atproto/api').AppBskyFeedPost.Record[]} posts
-       * @param {HTMLElement} panel
-       */
-      function reflectRecords(posts, panel) {
-        panel.innerHTML = '';
-        const postList = elem('div', {
-          className: 'post-list',
-          parent: panel
+      /** @param {ReturnType<typeof createHistoryFetcher>} fetcher */
+      function initSearchUserExperience(fetcher) {
+        dom.resultsPane.innerHTML = '';
+
+        /** @type {HTMLInputElement} */
+        let postSearchINPUT;
+        /** @type {HTMLElement} */
+        let postSearchClear;
+        const searchPanelElem = elem('div', {
+          className: 'search-panel',
+          parent: dom.resultsPane,
+          children: [
+            postSearchINPUT = elem('input', {
+              className: 'post-search-input',
+            }),
+            postSearchClear = elem('span', {
+              className: 'post-search-clear',
+              innerHTML: '&times;',
+            })
+          ]
         });
 
-        if (posts.length) console.log(posts[0]);
+        const postList = elem('div', {
+          className: 'post-list',
+          parent: dom.resultsPane
+        });
 
-        for (const post of posts) {
-          const postElem = renderPost(post);
-          postList.appendChild(postElem);
+        postSearchINPUT.oninput = handlePostSeachType;
+        postSearchINPUT.onkeydown = handlePostInputKeydown;
+        postSearchINPUT.onkeyup = handlePostSeachType;
+        postSearchINPUT.onchange = handlePostSeachType;
+
+        postSearchClear.onmousedown = (e) => {
+          e.preventDefault();
+          postSearchINPUT.value = '';
+        };
+
+        dom.searchPane.onscroll = handleScroll;
+
+        reflectRecords(fetcher.posts);
+        fetcher.fetchMore().then(() => {
+          reflectRecords(fetcher.posts);
+        });
+
+        var postSearchTypeDebounce;
+        function handlePostSeachType() {
+          clearTimeout(postSearchTypeDebounce);
+          postSearchTypeDebounce = setTimeout(handlePostSeachTypeDebounced, 300);
+        }
+
+        function handlePostSeachTypeDebounced() {
+        }
+
+        /** @param {KeyboardEvent} e */
+        function handlePostInputKeydown(e) {
+          if (e.keyCode === 13) {
+            e.preventDefault();
+            clearTimeout(postSearchTypeDebounce);
+            handlePostSeachTypeDebounced();
+          } else if (e.keyCode === 27) {
+            e.preventDefault();
+            postSearchINPUT.value = '';
+          }
+        }
+
+        var delayScrollHandler;
+        function handleScroll() {
+          if (delayScrollHandler) return;
+          delayScrollHandler = setTimeout(() => {
+            delayScrollHandler = 0;
+
+            handleScrollCore();
+          }, 20);
+        }
+
+        function handleScrollCore() {
+          const scrollBottom = dom.searchPane.scrollTop + dom.searchPane.clientHeight;
+          const scrollBottomThreshold = dom.searchPane.scrollHeight - 200;
+          if (scrollBottom < scrollBottomThreshold) return;
+
+          fetcher.fetchMore().then(() => {
+            reflectRecords(fetcher.posts);
+          });
+        }
+
+        /**
+         * @param {import ('./lib/node_modules/@atproto/api').AppBskyFeedPost.Record[]} posts
+         */
+        function reflectRecords(posts) {
+          console.log('reflectRecords ',posts);
+
+          for (const post of posts) {
+            const postElem = renderPost(post);
+            postList.appendChild(postElem);
+          }
         }
       }
 
