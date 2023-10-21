@@ -127,7 +127,7 @@ function receipts() {
 
 .statsPane {
   grid-row: 4;
-  padding: 2em;
+  padding: 2em 2em 0 2em;
 }
 
 .statsPane .avatar .avatar-image {
@@ -262,7 +262,6 @@ function receipts() {
   .statsPane {
     grid-row: 4;
     grid-column: 1;
-    padding: 2em;
   }
 
   .resultsPane {
@@ -568,15 +567,10 @@ function receipts() {
       }
     }
 
-    /**
-     * @param {string} searchText
-     * @param {{ [shortDID: string]: string | [shortHandle: string, displayName: string] }} bucket 
-     */
-    function findSearchMatches(searchText, bucket) {
+    /** @param {string} searchText */
+    function textSearcher(searchText) {
       const mushMatch = new RegExp([...searchText.replace(/[^a-z0-9]/gi, '')].join('.*'), 'i');
       const mushMatchLead = new RegExp('^' + [...searchText.replace(/[^a-z0-9]/gi, '')].join('.*'), 'i');
-
-      const lowercaseSearchTextTrim = searchText.toLowerCase().trim();
 
       const searchWordRegExp = new RegExp(
         searchText.split(/\s+/)
@@ -586,6 +580,33 @@ function receipts() {
           .map(word => '(' + word.replace(/[|\\{}()[\]^$+*?.]/g, '\\$&') + ')')
           .join('|'),
         'gi');
+
+      return matchRank;
+
+      /** @param {string} matchText @param {boolean=} startOnly */
+      function matchRank(matchText, startOnly) {
+        let rank = 0;
+        searchWordRegExp.lastIndex = 0;
+        while (true) {
+          const match = searchWordRegExp.exec(matchText);
+          if (!match) break;
+          rank += (match[0].length / matchText.length);
+          if (match.index === 0) rank += 3;
+        }
+
+        if (mushMatch.test(matchText)) rank += 0.03;
+        if (mushMatchLead.test(matchText)) rank += 0.05;
+
+        return rank;
+      }
+    }
+
+    /**
+     * @param {string} searchText
+     * @param {{ [shortDID: string]: string | [shortHandle: string, displayName: string] }} bucket 
+     */
+    function findSearchMatches(searchText, bucket) {
+      const textSearcherFn = textSearcher(searchText);
 
       const searchMatches = [];
       for (const shortDID in bucket) {
@@ -599,31 +620,10 @@ function receipts() {
         }
 
         if (displayName) {
-          searchWordRegExp.lastIndex = 0;
-          while (true) {
-            const match = searchWordRegExp.exec(displayName);
-            if (!match) break;
-            rank += (match[0].length / displayName.length) * 20;
-            if (match.index === 0) rank += 30;
-          }
-
-          if (mushMatch.test(displayName)) rank += 3;
-          if (mushMatchLead.test(displayName)) rank += 5;
+          rank += textSearcherFn(displayName) * 20;
         }
 
-        searchWordRegExp.lastIndex = 0;
-        while (true) {
-          const match = searchWordRegExp.exec(fullHandle);
-          if (!match) break;
-          rank += (match[0].length / fullHandle.length) * 30;
-          if (match.index === 0) rank += 40;
-        }
-
-        if (mushMatch.test(shortHandle)) rank += 3;
-        if (mushMatchLead.test(shortHandle)) rank += 5;
-
-        if (!shortDID.indexOf(lowercaseSearchTextTrim)) rank += 200;
-        if (!unwrapShortDID(shortDID).indexOf(lowercaseSearchTextTrim)) rank += 1000;
+        rank += textSearcherFn(fullHandle) * 30;
 
         if (rank)
           searchMatches.push({ rank, shortDID, shortHandle, displayName})
@@ -776,6 +776,13 @@ function receipts() {
         }
       }
 
+      /**
+       * @typedef {import('./lib/node_modules/@atproto/api').AppBskyFeedPost.Record & {
+       *  uri: string,
+       *  dom?: HTMLElement
+       * }} PostRecord
+       */
+
       async function startFetchingPosts() {
         if (!postsByDID) postsByDID = {};
         const fetcher = postsByDID[shortDID] || (postsByDID[shortDID] = createHistoryFetcher(shortDID));
@@ -786,6 +793,7 @@ function receipts() {
 
       /** @param {ReturnType<typeof createHistoryFetcher>} fetcher */
       function initSearchUserExperience(fetcher) {
+
         dom.resultsPane.innerHTML = '';
 
         /** @type {HTMLInputElement} */
@@ -811,6 +819,11 @@ function receipts() {
           parent: dom.resultsPane
         });
 
+        /** @type {PostRecord[]} */
+        const postCache = [];
+        /** @type {{ [uri: string]: PostRecord}} */
+        const postCacheByUri = {};
+
         postSearchINPUT.oninput = handlePostSeachType;
         postSearchINPUT.onkeydown = handlePostInputKeydown;
         postSearchINPUT.onkeyup = handlePostSeachType;
@@ -821,11 +834,11 @@ function receipts() {
           postSearchINPUT.value = '';
         };
 
-        dom.searchPane.onscroll = handleScroll;
+        dom.resultsPane.onscroll = handleScroll;
 
-        reflectRecords(fetcher.posts);
+        reflectRecords();
         fetcher.fetchMore().then(() => {
-          reflectRecords(fetcher.posts);
+          reflectRecords();
         });
 
         var postSearchTypeDebounce;
@@ -835,6 +848,7 @@ function receipts() {
         }
 
         function handlePostSeachTypeDebounced() {
+          reflectRecords();
         }
 
         /** @param {KeyboardEvent} e */
@@ -860,30 +874,66 @@ function receipts() {
         }
 
         function handleScrollCore() {
-          const scrollBottom = dom.searchPane.scrollTop + dom.searchPane.clientHeight;
-          const scrollBottomThreshold = dom.searchPane.scrollHeight - 200;
+          const scrollBottom = dom.resultsPane.scrollTop + dom.resultsPane.clientHeight;
+          const scrollBottomThreshold = dom.resultsPane.scrollHeight - 200;
           if (scrollBottom < scrollBottomThreshold) return;
 
           fetcher.fetchMore().then(() => {
-            reflectRecords(fetcher.posts);
+            reflectRecords();
           });
         }
 
-        /**
-         * @param {import ('./lib/node_modules/@atproto/api').AppBskyFeedPost.Record[]} posts
-         */
-        function reflectRecords(posts) {
-          console.log('reflectRecords ',posts);
-
-          for (const post of posts) {
-            const postElem = renderPost(post);
-            postList.appendChild(postElem);
+        function reflectRecords() {
+          // deduplicate
+          for (const post of fetcher.posts) {
+            let postEntry = postCacheByUri[post.uri];
+            if (postEntry) continue;
+            postEntry = postCacheByUri[post.uri] = post;
+            postCache.push(postEntry);
           }
+
+          const searchResult = findMatchingPosts(postSearchINPUT.value, postCache);
+
+          for (let i = 0; i < searchResult.length; i++) {
+            const post = searchResult[i];
+            if (!post.dom) post.dom = renderPost(post);
+            if (postList.children[i]) {
+              postList.insertBefore(post.dom, postList.children[i]);
+            } else {
+              postList.appendChild(post.dom);
+            }
+          }
+
+          while (postList.children.length > searchResult.length) {
+            postList.removeChild(postList.children[postList.children.length - 1]);
+          }
+
+          handleScrollCore();
+        }
+        
+        /**
+         * @param {string} searchText
+         * @param {PostRecord[]} posts
+         */
+        function findMatchingPosts(searchText, posts) {
+          if (!(searchText || '').trim()) return posts;
+
+          const textSearcherFn = textSearcher(searchText);
+          const matches = [];
+          for (const post of posts) {
+            const rank = textSearcherFn(post.text);
+            if (rank > 0.1) matches.push({ rank, post });
+          }
+
+          matches.sort((a, b) => b.rank - a.rank || a.post.uri.localeCompare(b.post.uri));
+          const postsOnly = matches.map(m => m.post);
+
+          return postsOnly;
         }
       }
 
       /**
-       * @param {import ('./lib/node_modules/@atproto/api').AppBskyFeedPost.Record} post
+       * @param {PostRecord} post
        */
       function renderPost(post) {
         const postUri = breakFeedUri(/** @type {string} */(post.uri));
@@ -937,10 +987,7 @@ function receipts() {
         let cursor = undefined;
         const fetcher = {
           fetchMore,
-          posts:
-          /**
-           * @type {import ('./lib/node_modules/@atproto/api').AppBskyFeedPost.Record[]}
-           */([])
+          posts: /** @type {PostRecord[]} */([])
         };
         return fetcher;
 
