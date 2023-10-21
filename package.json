@@ -1,0 +1,26 @@
+{
+  "name": "receipts",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "npx esbuild lib/lib.js --outfile=lib.js --bundle",
+    "start": "node index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+  },
+  "-commented-dependencies": {
+    "@atproto/api": "*",
+    "@atproto/repo": "*",
+    "@atproto/xrpc-server": "*",
+    "@ipld/car": "*",
+    "cbor-x": "*",
+    "esbuild": "*",
+    "multiformats": "*",
+    "three": "*",
+    "troika-three-text": "*"
+  }
+}
