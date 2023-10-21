@@ -985,7 +985,11 @@ function receipts() {
 
         let fetchMorePromise;
 
+        const postsSeen = {};
+
         let cursor = undefined;
+        let endReached = false;
+        let lastResponseTime;
         const fetcher = {
           fetchMore,
           posts: /** @type {PostRecord[]} */([])
@@ -1001,15 +1005,26 @@ function receipts() {
         }
 
         async function fetchMoreCore() {
+          if (endReached && lastResponseTime && Date.now() - lastResponseTime < 1000) {
+            await new Promise(resolve => setTimeout(resolve, Math.random() * 5000 + 5000));
+          }
+
           const posts = await atClient.com.atproto.repo.listRecords({
             collection: 'app.bsky.feed.post',
             repo: unwrapShortDID(shortDID),
             cursor
           });
 
-          cursor = posts.data.cursor;
+          if (posts.data.cursor)
+            cursor = posts.data.cursor;
+
+          endReached = !posts.data.cursor;
+            
 
           for (const p of posts.data.records) {
+            if (p.uri in postsSeen) continue;
+            postsSeen[p.uri] = true;
+
             const combinePostAndRecord = {
               ...p,
               ...p.value
@@ -1017,6 +1032,8 @@ function receipts() {
 
             fetcher.posts.push(/** @type {*} */(combinePostAndRecord));
           }
+
+          lastResponseTime = Date.now();
 
           fetchMorePromise = undefined;
         }
