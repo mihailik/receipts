@@ -17,6 +17,7 @@ function receipts() {
 </div>
 <div class=statsPane>
 </div>
+<div class=searchLink></div>
 <div class=resultsPane>
 <div style="padding: 1em;">
   Searching BlueSky activity of a user: to verify their identity, and to find their receipts.
@@ -157,6 +158,67 @@ function receipts() {
   grid-column: 2;
 }
 
+.searchLink {
+  transform: scale(4) rotate(41deg);
+  transform-origin: top;
+  cursor: pointer;
+  justify-self: end;
+  align-self: start;
+  font-size: 100%;
+  grid-row: 1;
+  grid-column: 1;
+  color: black;
+  filter: drop-shadow(1px 0px 2px #FFFFFFD0) drop-shadow(-0.5px 0px 1px #FFFFFFD0);
+}
+
+.searchLink::before {
+  content: '';
+  display: inline-block;
+  border: solid 1.3px currentColor;
+  border-radius: 1em;
+  width: 0.5em;
+  height: 0.5em;
+}
+
+.searchLink::after {
+  content: '';
+  display: inline-block;
+  border-top: solid 1px currentColor;
+  width: 0.3em;
+  height: 0.25em;
+}
+
+@media (max-width: 800px) {
+  #receiptsHost {
+    grid-template-rows: 1fr auto auto auto 5fr;
+    grid-template-columns: 1fr;
+  }
+
+  .titlePane {
+    grid-row: 2;
+    grid-column: 1;
+  }
+
+  .searchPane {
+    grid-row: 3;
+    grid-column: 1;
+    position: relative;
+    padding: 2em;
+    padding-top: 1em;
+  }
+
+  .statsPane {
+    grid-row: 4;
+    grid-column: 1;
+    padding: 2em;
+  }
+
+  .resultsPane {
+    grid-row: 5;
+    grid-column: 1;
+  }
+}
+
 </style>
       `});
 
@@ -169,7 +231,8 @@ function receipts() {
        *  searchPane: HTMLElement,
        *  searchINPUT: HTMLInputElement & { autocompleteDIV?: HTMLDivElement },
        *  statsPane: HTMLElement,
-       *  resultsPane: HTMLElement
+       *  resultsPane: HTMLElement,
+       *  searchLink: HTMLElement
        * }}
        */
       const dom = /** @type {*} */({});
@@ -452,7 +515,7 @@ function receipts() {
     }
 
     function navigateToSearchAccount(shortDID, shortHandle, displayName) {
-      location.replace('?handle=' + shortHandle);
+      history.pushState({}, '', '?handle=' + shortHandle);
 
       displaySearchResultsFor(shortDID, shortHandle, displayName);
     }
@@ -461,6 +524,7 @@ function receipts() {
 
       async function initialLoad() {
         dom.searchPane.style.display = 'none';
+        dom.searchLink.style.display = 'block';
         if (dom.searchINPUT.autocompleteDIV) {
           dom.searchINPUT.autocompleteDIV.style.display = 'none';
           dom.searchINPUT.autocompleteDIV.innerHTML = '';
@@ -595,6 +659,12 @@ function receipts() {
       dom.searchINPUT.onkeyup = handleSearchType;
       dom.searchINPUT.onchange = handleSearchType;
 
+      dom.banner.style.backgroundImage = '';
+      dom.searchLink.style.display = 'none';
+      dom.titleH2.textContent = ' History search:';
+      dom.statsPane.innerHTML = '';
+      dom.searchPane.style.display = 'block';
+
       if (preloadSearchText) {
         dom.searchINPUT.value = preloadSearchText;
       }
@@ -604,6 +674,11 @@ function receipts() {
       const urlParams = new URLSearchParams(window.location.search);
       const did = urlParams.get('did');
       const handle = urlParams.get('handle');
+      dom.searchLink.style.display = 'block';
+      dom.searchLink.onclick = () => {
+        history.pushState({}, '', 'index.html');
+        displaySearchPage();
+      };
 
       if (did || handle) {
         displaySearchResultsFor(did, handle, undefined);
@@ -632,7 +707,7 @@ function receipts() {
   function runInLocalNodeScript() {
     const fs = require('fs');
     const path = require('path');
-    const atproto_api = require('./lib.js');
+    require('./lib.js');
 
     function convertAtlasDbJsonpUsers() {
       console.log('Preloading from Atlas...');
@@ -852,10 +927,10 @@ function receipts() {
         const descr = displayName ? [shortHandle, displayName] : shortHandle;
 
         const existingDescr = allUsers[shortDID];
-        if (existingDescr === descr) return ['NOOP', existingDescr];
+        if (existingDescr === descr) return ['----NOOP----', existingDescr];
         if (Array.isArray(existingDescr) && Array.isArray(descr)
           && existingDescr.length === descr.length
-          && !existingDescr.some((x, i) => x !== descr[i])) return ['NOOP', ...existingDescr];
+          && !existingDescr.some((x, i) => x !== descr[i])) return ['    NOOP    ', ...existingDescr];
 
         bucket[shortDID] = descr;
         allUsers[shortDID] = descr;
