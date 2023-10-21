@@ -175,8 +175,12 @@ function receipts() {
   padding: 0.5em 0;
 }
 
-.resultsPane .post-list .post .post-content-line-timestamp {
+.resultsPane .post-list .post .post-content-line-timestamp a {
   color: royalblue;
+  text-decoration: none;
+}
+.resultsPane .post-list .post .post-content-line-timestamp a:hover {
+  text-decoration: underline;
 }
 
 .resultsPane .post-list .post .post-content-line-text {
@@ -762,6 +766,8 @@ function receipts() {
           parent: panel
         });
 
+        if (posts.length) console.log(posts[0]);
+
         for (const post of posts) {
           const postElem = renderPost(post);
           postList.appendChild(postElem);
@@ -772,6 +778,8 @@ function receipts() {
        * @param {import ('./lib/node_modules/@atproto/api').AppBskyFeedPost.Record} post
        */
       function renderPost(post) {
+        const postUri = breakFeedUri(/** @type {string} */(post.uri));
+
         const postElem = elem('div', {
           className: 'post',
           children: [
@@ -780,7 +788,12 @@ function receipts() {
               children: [
                 elem('div', {
                   className: 'post-content-line-timestamp',
-                  textContent: new Date(post.createdAt).toLocaleString()
+                  children: [
+                    elem('a', {
+                      href: postUri && 'https://bsky.app/profile/' + unwrapShortHandle(shortHandle) + '/post/' + postUri.postID,
+                      textContent: new Date(post.createdAt).toLocaleString()
+                    })
+                  ]
                 }),
                 elem('div', {
                   className: 'post-content-line',
@@ -791,7 +804,7 @@ function receipts() {
                     })
                   ]
                 }),
-                post.embed?.images?.length && elem('div', {
+                /** @type {*} */(post.embed?.images)?.length && elem('div', {
                   className: 'post-content-line',
                   children: [
                     elem('img', {
@@ -816,7 +829,10 @@ function receipts() {
         let cursor = undefined;
         const fetcher = {
           fetchMore,
-          posts: /**@type {import ('./lib/node_modules/@atproto/api').AppBskyFeedPost.Record[]} */([])
+          posts:
+          /**
+           * @type {import ('./lib/node_modules/@atproto/api').AppBskyFeedPost.Record[]}
+           */([])
         };
         return fetcher;
 
@@ -838,7 +854,12 @@ function receipts() {
           cursor = posts.data.cursor;
 
           for (const p of posts.data.records) {
-            fetcher.posts.push(/** @type {*} */(p.value));
+            const combinePostAndRecord = {
+              ...p,
+              ...p.value
+            };
+
+            fetcher.posts.push(/** @type {*} */(combinePostAndRecord));
           }
 
           fetchMorePromise = undefined;
@@ -1195,6 +1216,17 @@ function receipts() {
     return handle && handle.replace(_shortenHandle_Regex, '');
   }
   const _shortenHandle_Regex = /\.bsky\.social$/;
+
+  /**
+ * @param {string=} uri
+ */
+  function breakFeedUri(uri) {
+    if (!uri) return;
+    const match = _breakFeedUri_Regex.exec(uri);
+    if (!match || !match[3]) return;
+    return { shortDID: match[2], postID: match[3] };
+  }
+  const _breakFeedUri_Regex = /^at\:\/\/(did:plc:)?([a-z0-9]+)\/[a-z\.]+\/?(.*)?$/;
 
   /** @param {string} path */
   function jsonpFuncName(path) {
