@@ -3,13 +3,14 @@
   "version": "1.0.0",
   "private": "true",
   "scripts": {
-    "build": "rollup lib.js --file ../lib.js --format iife --plugin @rollup/plugin-node-resolve --context this"
+    "build": "rollup lib.js --file ../lib.js --format iife --plugin @rollup/plugin-node-resolve --plugin @rollup/plugin-commonjs --context this"
   },
   "dependencies": {
     "@atproto/api": "*",
     "@atproto/repo": "*"
   },
   "devDependencies": {
+    "@rollup/plugin-commonjs": "^25.0.7",
     "@rollup/plugin-node-resolve": "^15.2.2",
     "rollup": "^4.0.2"
   }

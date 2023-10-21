@@ -8,7 +8,7 @@ function receipts() {
         id: 'receiptsHost',
         innerHTML: `
 <div class=titlePane>
-  <h2> Receipts: </h2>
+  <h2> History search: </h2>
 </div>
 <div class=searchPane>
   <input id=searchINPUT placeholder='Who are we talking about?'>
@@ -66,8 +66,72 @@ function receipts() {
   box-shadow: 0 1px 0 #006cfd;
 }
 
+.searchPane .autocomplete {
+  position: absolute;
+  background: white;
+  padding: 0.3em 0;
+  border: solid 1px #00000078;
+  box-shadow: 6px 6px 9px #0000001f;
+  transform: translate(0.2em, 0.2em);
+  max-height: 15em;
+  overflow: auto;
+}
+
+.searchPane .autocomplete .autocomplete-item {
+  padding: 0.1em 0.5em 0.2em 0.5em;
+  cursor: default;
+}
+
+.searchPane .autocomplete .autocomplete-item .autocomplete-item-at {
+  opacity: 0.7;
+  font-weight: 300;
+  padding-right: 0.12em;
+}
+
+.searchPane .autocomplete .autocomplete-item .autocomplete-item-displayName {
+  padding-left: 0.5em;
+  zoom: 0.8;
+  transform: scaleY(1.1);
+  display: inline-block;
+  font-weight: 300;
+  opacity: 0.8;
+}
+
+.searchPane .autocomplete .autocomplete-item:hover {
+  background: #e2f1ff;
+}
+
 .statsPane {
   grid-row: 4;
+  padding: 2em;
+}
+
+.statsPane .avatar .avatar-image {
+  width: 4em;
+  border-radius: 6em;
+  float: left;
+  margin-right: 0.7em;
+}
+
+.statsPane .displayName {
+  display: block;
+}
+
+.statsPane .did {
+  font-size: 90%;
+  opacity: 0.8;
+}
+
+.statsPane .did .did-prefix {
+  opacity: 0.6;
+}
+
+.statsPane .bio {
+  clear: both;
+  font: inherit;
+  white-space: pre-line;
+  padding-top: 2em;
+  padding-left: 1em;
 }
 
 .resultsPane {
@@ -85,14 +149,14 @@ function receipts() {
        *  titlePane: HTMLElement,
        *  titleH2: HTMLElement,
        *  searchPane: HTMLElement,
-       *  searchINPUT: HTMLInputElement,
+       *  searchINPUT: HTMLInputElement & { autocompleteDIV?: HTMLDivElement },
        *  statsPane: HTMLElement,
        *  resultsPane: HTMLElement
        * }}
        */
       const dom = /** @type {*} */({});
 
-      for (const ch of [...host.children]) {
+      for (const ch of [...host.querySelectorAll('*')]) {
         if (ch.id) dom[ch.id] = ch;
         else if (ch.className) dom[ch.className] = ch;
       }
@@ -101,6 +165,72 @@ function receipts() {
       document.body.appendChild(host);
 
       return dom;
+    }
+
+    var jsonpLoadingCache;
+
+    /** @param {string} relativePath */
+    function loadJsonp(relativePath) {
+      if (!jsonpLoadingCache) jsonpLoadingCache = {};
+      if (jsonpLoadingCache[relativePath]) return jsonpLoadingCache[relativePath];
+
+      return jsonpLoadingCache[relativePath] = new Promise((resolve, reject) => {
+        const funcName = jsonpFuncName(relativePath);
+        let completed = false;
+        /** @type {*} */(window)[funcName] = (data) => {
+          queueCleanupGlobal();
+          if (completed) {
+            console.log('JSONP data arrived after promise completed ', funcName, ': ', data);
+            return;
+          }
+          completed = true;
+          jsonpLoadingCache[relativePath] = data;
+          resolve(data);
+        };
+        const script = document.createElement('script');
+        script.onerror = (error) => {
+          if (completed) {
+            console.log('JSONP script error fired after promise completed ', funcName, ': ', error);
+            return;
+          }
+          completed = true;
+          queueCleanupGlobal();
+          delete jsonpLoadingCache[relativePath];
+          reject(error);
+        };
+        script.onload = function () {
+          setTimeout(() => {
+            if (!completed) {
+              let errorText =
+                'JSONP script onload fired, but promise never completed: potentially bad JSONP response ' + funcName;
+              try {
+                errorText += ': ' + script.outerHTML;
+              } catch (errorGettingScriptElement) {
+                errorText += ', <' + 'script' + '> element not accessible';
+              }
+              console.log(errorText);
+              completed = true;
+              delete jsonpLoadingCache[relativePath];
+              reject(new Error(errorText));
+            }
+            queueCleanupGlobal();
+          }, 300);
+        };
+        script.src = relativePath;
+        document.body.appendChild(script);
+
+        var cleanupGlobalTimeout;
+        var cleaned;
+        function queueCleanupGlobal() {
+          if (cleaned) return;
+          clearTimeout(cleanupGlobalTimeout);
+          cleanupGlobalTimeout = setTimeout(() => {
+            delete window[funcName];
+            if (script.parentElement) script.parentElement.removeChild(script);
+            cleaned = true;
+          }, 500);
+        }
+      });
     }
 
     /**
@@ -148,8 +278,8 @@ function receipts() {
           }
           else if (style[key] == null || (typeof style[key] === 'function' && !(key in el))) continue;
 
-          if (key in el.style) el.style[key] = /** @type {*} */(style[key]);
-          else if (key in el) el[key] = style[key];
+          if (key in el) el[key] = style[key];
+          else if (key in el.style) el.style[key] = /** @type {*} */(style[key]);
         }
 
         if (appendChildren) {
@@ -170,6 +300,307 @@ function receipts() {
       return /** @type {*} */(el);
     }
 
+    var handleSearchType_debounceTimeout;
+    function handleSearchType() {
+      clearTimeout(handleSearchType_debounceTimeout);
+      handleSearchType_debounceTimeout = setTimeout(handleSearchTypeDebounced, 300);
+    }
+
+    async function handleSearchTypeDebounced() {
+      const searchInstance = handleSearchType_debounceTimeout;
+      const searchText = (dom.searchINPUT.value || '');
+      if (searchText.length <= 2) {
+        updateSearchMatches(searchText, []);
+        return;
+      }
+
+      const bucket = await loadBucketFor(searchText);
+      if (dom.searchINPUT.value !== searchText || handleSearchType_debounceTimeout !== searchInstance) return;
+
+      const searchMatches = findSearchMatches(searchText, bucket);
+      if (dom.searchINPUT.value !== searchText || handleSearchType_debounceTimeout !== searchInstance) return;
+
+      updateSearchMatches(searchText, searchMatches);
+    }
+
+    /**
+     * @param {string} searchText
+     * @param {{ rank: number, shortDID: string, shortHandle: string, displayName: string | undefined }[]} searchMatches
+     */
+    function updateSearchMatches(searchText, searchMatches) {
+      if (!searchMatches.length) {
+        if (dom.searchINPUT.autocompleteDIV)
+          dom.searchINPUT.autocompleteDIV.style.display = 'none';
+
+        return;
+      }
+
+      if (!dom.searchINPUT.autocompleteDIV) {
+        dom.searchINPUT.autocompleteDIV = elem('div', {
+          className: 'autocomplete',
+          parent: dom.searchPane
+        });
+      } else {
+        dom.searchINPUT.autocompleteDIV.style.display = 'block';
+      }
+
+      dom.searchINPUT.autocompleteDIV.innerHTML = '';
+      for (const match of searchMatches) {
+        const matchElem = elem('div', {
+          className: 'autocomplete-item',
+          parent: dom.searchINPUT.autocompleteDIV,
+          children: [
+            elem('span', { className: 'autocomplete-item-at', textContent: '@' }),
+            elem('span', { className: 'autocomplete-item-handle', textContent: match.shortHandle }),
+            match.displayName &&
+              elem('span', { className: 'autocomplete-item-displayName', textContent: match.displayName }),
+          ]
+        });
+
+        matchElem.onclick = () => {
+          navigateToSearchAccount(match.shortDID, match.shortHandle, match.displayName);
+        };
+      }
+    }
+
+    /**
+     * @param {string} searchText
+     * @param {{ [shortDID: string]: string | [shortHandle: string, displayName: string] }} bucket 
+     */
+    function findSearchMatches(searchText, bucket) {
+      const mushMatch = new RegExp([...searchText.replace(/[^a-z0-9]/gi, '')].join('.*'), 'i');
+      const mushMatchLead = new RegExp('^' + [...searchText.replace(/[^a-z0-9]/gi, '')].join('.*'), 'i');
+
+      const lowercaseSearchTextTrim = searchText.toLowerCase().trim();
+
+      const searchWordRegExp = new RegExp(
+        searchText.split(/\s+/)
+          // sort longer words match first
+          .sort((w1, w2) => w2.length - w1.length || (w1 > w2 ? 1 : w1 < w2 ? -1 : 0))
+          // generate a regexp out of word
+          .map(word => '(' + word.replace(/[|\\{}()[\]^$+*?.]/g, '\\$&') + ')')
+          .join('|'),
+        'gi');
+
+      const searchMatches = [];
+      for (const shortDID in bucket) {
+        let rank = 0;
+        let shortHandle = bucket[shortDID];
+        let fullHandle = unwrapShortHandle(shortHandle);
+        let displayName;
+        if (Array.isArray(shortHandle)) {
+          displayName = shortHandle[1];
+          shortHandle = shortHandle[0];
+        }
+
+        if (displayName) {
+          searchWordRegExp.lastIndex = 0;
+          while (true) {
+            const match = searchWordRegExp.exec(displayName);
+            if (!match) break;
+            rank += (match[0].length / displayName.length) * 20;
+            if (match.index === 0) rank += 30;
+          }
+
+          if (mushMatch.test(displayName)) rank += 3;
+          if (mushMatchLead.test(displayName)) rank += 5;
+        }
+
+        searchWordRegExp.lastIndex = 0;
+        while (true) {
+          const match = searchWordRegExp.exec(fullHandle);
+          if (!match) break;
+          rank += (match[0].length / fullHandle.length) * 30;
+          if (match.index === 0) rank += 40;
+        }
+
+        if (mushMatch.test(shortHandle)) rank += 3;
+        if (mushMatchLead.test(shortHandle)) rank += 5;
+
+        if (!shortDID.indexOf(lowercaseSearchTextTrim)) rank += 200;
+        if (!unwrapShortDID(shortDID).indexOf(lowercaseSearchTextTrim)) rank += 1000;
+
+        if (rank)
+          searchMatches.push({ rank, shortDID, shortHandle, displayName})
+      }
+
+      searchMatches.sort((a, b) => b.rank - a.rank || a.shortDID.localeCompare(b.shortDID));
+      return searchMatches;
+    }
+
+    function loadBucketFor(handleOrSearch) {
+      const first2Letters = getHandleBucket(handleOrSearch);
+      return loadJsonp('../receipts-db/' + first2Letters + '.js');
+    }
+
+    function navigateToSearchAccount(shortDID, shortHandle, displayName) {
+      location.replace('?handle=' + shortHandle);
+
+      displaySearchResultsFor(shortDID, shortHandle, displayName);
+    }
+
+    async function displaySearchResultsFor(shortDID, shortHandle, displayName) {
+
+      async function initialLoad() {
+        dom.searchPane.style.display = 'none';
+        if (dom.searchINPUT.autocompleteDIV) {
+          dom.searchINPUT.autocompleteDIV.style.display = 'none';
+          dom.searchINPUT.autocompleteDIV.innerHTML = '';
+        }
+        dom.searchINPUT.value = '';
+
+        dom.statsPane.innerHTML = '';
+        elem('div', {
+          textContent:
+            shortHandle ? unwrapShortHandle(shortHandle) + '...' :
+              shortDID ? unwrapShortDID(shortDID) + '...' :
+                '...',
+          paddingLeft: '4em',
+          opacity: '0.8',
+          parent: dom.statsPane
+        });
+
+        const bucket = await loadBucketFor(shortHandle || shortDID);
+        const searchMatches = bucket && findSearchMatches(shortHandle || shortDID, bucket);
+        if (!searchMatches?.length) {
+          displaySearchPage(shortHandle || (shortDID ? unwrapShortDID(shortDID) : ''));
+          return;
+        }
+
+        shortDID = searchMatches[0].shortDID;
+        shortHandle = searchMatches[0].shortHandle;
+        displayName = searchMatches[0].displayName;
+
+      }
+
+      async function loadWithConfirmedArgs() {
+        dom.statsPane.textContent = '';
+
+        /** @type {HTMLElement} */
+        let avatarElem;
+        /** @type {HTMLElement} */
+        let handleElem;
+
+        /** @type {HTMLElement} */
+        let didElem;
+
+        /** @type {HTMLElement} */
+        let displayNameElem;
+
+        const titleLine = elem('div', {
+          parent: dom.statsPane,
+          className: 'title',
+          children: [
+            avatarElem = elem('span', {
+              className: 'avatar',
+              textContent: '@'
+            }),
+            ' ',
+            handleElem = elem('span', {
+              className: 'handle',
+              textContent: shortHandle,
+              children: unwrapShortHandle(shortHandle) !== shortHandle && [
+                elem('span', {
+                  className: 'bsky.social',
+                  textContent: '.bsky.social'
+                })
+              ] || undefined
+            }),
+            ' ',
+            didElem = elem('span', {
+              className: 'did',
+              children: [
+                unwrapShortDID(shortDID) !== shortDID && elem('span', {
+                  className: 'did-prefix',
+                  textContent: 'did:plc:'
+                }) || undefined,
+                shortDID
+              ]
+            }),
+            ' ',
+            displayNameElem = elem('span', {
+              className: 'displayName',
+              textContent: displayName
+            }),
+          ]
+        });
+
+        const bioElem = elem('pre', {
+          className: 'bio',
+          textContent: 'bio...',
+          parentElement: dom.statsPane,
+        });
+
+        updateAvatarAndBio();
+
+        return {
+          titleLine,
+          avatar: avatarElem,
+          handle: handleElem,
+          did: didElem,
+          displayName: displayNameElem,
+          bio: bioElem
+        };
+
+        async function updateAvatarAndBio() {
+          const atClient = new atproto_api.BskyAgent({ service: 'https://bsky.social/xrpc' });
+          const profile = await atClient.com.atproto.repo.listRecords({
+            collection: 'app.bsky.actor.profile',
+            repo: unwrapShortDID(shortDID)
+          });
+          /** @type {*} */
+          const profileRec = profile.data.records?.filter(rec => rec.value)[0]?.value;
+          const avatarCid = profileRec?.avatar?.ref?.toString();
+          const avatarUrl = avatarCid && 'https://bsky.social/xrpc/com.atproto.sync.getBlob?did=' + unwrapShortDID(shortDID) + '&cid=' + avatarCid;
+          const bannerCid = profileRec?.banner?.ref?.toString();
+          const bannerUrl = bannerCid && 'https://bsky.social/xrpc/com.atproto.sync.getBlob?did=' + unwrapShortDID(shortDID) + '&cid=' + bannerCid;
+          const displayName = profileRec?.displayName;
+          const description = profileRec?.description;
+
+          displayNameElem.textContent = displayName;
+          if (avatarUrl) {
+            avatarElem.innerHTML = '';
+            elem('img', {
+              className: 'avatar-image',
+              src: avatarUrl,
+              parent: avatarElem,
+            });
+          }
+
+          if (description) {
+            bioElem.textContent = description;
+          }
+        }
+      }
+
+      await initialLoad();
+      await loadWithConfirmedArgs();
+    }
+
+    function displaySearchPage(preloadSearchText) {
+      dom.searchINPUT.oninput = handleSearchType;
+      dom.searchINPUT.onkeydown = handleSearchType;
+      dom.searchINPUT.onkeyup = handleSearchType;
+      dom.searchINPUT.onchange = handleSearchType;
+
+      if (preloadSearchText) {
+        dom.searchINPUT.value = preloadSearchText;
+      }
+    }
+
+    function detectModeAndShow() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const did = urlParams.get('did');
+      const handle = urlParams.get('handle');
+
+      if (did || handle) {
+        displaySearchResultsFor(did, handle, undefined);
+      } else {
+        displaySearchPage();
+      }
+    }
+    
+
     const waitForLibrariesLoaded = new Promise((resolve) => {
       // @ts-ignore
       receipts = () => {
@@ -180,6 +611,8 @@ function receipts() {
     /** @type {*} */(window).module = { exports: {}  };
 
     const dom = initSearchPageDOM();
+
+    detectModeAndShow();
 
   }
 
@@ -221,8 +654,21 @@ function receipts() {
       for (const first2Letters in byFirst2Letters) {
         console.log('  ' + first2Letters + '.js');
         const bucket = byFirst2Letters[first2Letters];
-        const letterDir = first2Letters.split('/')[0];
+        saveBucket(bucket);
+      }
+      console.log('Saved ' + Object.keys(byFirst2Letters).length + ' buckets');
+    }
 
+    function saveBucket(bucket) {
+      for (const shortDID in bucket) {
+        let shortHandle = bucket[shortDID];
+        if (Array.isArray(shortHandle)) shortHandle = shortHandle[0];
+        if (!shortHandle) continue;
+
+        const receiptsDbDir = path.resolve(__dirname, '../receipts-db');
+
+        const first2Letters = getHandleBucket(shortHandle);
+        const letterDir = path.resolve(receiptsDbDir, first2Letters.split('/')[0]);
         if (!fs.existsSync(letterDir)) fs.mkdirSync(letterDir);
 
         saveJsonp(
@@ -231,9 +677,9 @@ function receipts() {
           Object.keys(bucket).map(shortDID =>
             JSON.stringify(shortDID) + ':' + JSON.stringify(bucket[shortDID]))
             .join(',\n') +
-          '\n}'); 
+          '\n}');
+        return;
       }
-      console.log('Saved ' + Object.keys(byFirst2Letters).length + ' buckets');
     }
 
     function getAtlasDbJsonpUsers() {
@@ -280,14 +726,6 @@ function receipts() {
       fs.writeFileSync(filePath, jsonpWrapped);
     }
 
-    /** @param {string} path */
-    function jsonpFuncName(path) {
-      return /** @type {string} */(path.split(/[/\\]/g).pop())
-        .replace(/\.js$/, '')
-        .replace(/[^a-z0-9]/ig, '')
-        .replace(/^([0-9]|do|if|in)/ig, '_$1');
-    }
-
     function loadFromReceitptsDb() {
       const allUsers = {};
       const byFirst2Letters = {};
@@ -305,7 +743,7 @@ function receipts() {
           const bucket = evalJsonp(fs.readFileSync(file, 'utf8'));
           Object.assign(allUsers, bucket);
           const first2Letters = path.basename(file, '.js');
-          byFirst2Letters[first2Letters] = bucket;
+          byFirst2Letters[first2Letters.charAt(0) + '/' + first2Letters] = bucket;
         }
       }
 
@@ -325,7 +763,7 @@ function receipts() {
       let saveBuckets = [];
       while (true) {
         try {
-          const start = Date.now();
+          const batchStart = Date.now();
           const nextList = await atClient.com.atproto.sync.listRepos({ cursor: currentCursor });
 
           if (nextList.data?.repos?.length) {
@@ -339,24 +777,34 @@ function receipts() {
               // }
 
               process.stdout.write('  ' + shortenDID(repo.did));
-              const  descr = await updateAccountInfo(repo.did);
-              console.log(' ' + JSON.stringify(descr));
+              const startCall = Date.now();
+              while (true) {
+                try {
+                  const descr = await updateAccountInfo(repo.did);
+                  console.log(' ' + JSON.stringify(descr));
+                  break;
+                } catch (error) {
+                  process.stdout.write(
+                    /rate/i.test(error?.message || '') ? 'R ' :
+                      error?.message);
+                  const callTime = Date.now() - startCall;
+                  const waitTime = (Math.random() * 0.5 + 0.5) * Math.max(callTime, 5000);
+                  await new Promise(resolve => setTimeout(resolve, waitTime));
+                }
+              }
             }
 
             process.stdout.write('Saving ' + saveBuckets.length + ' buckets...');
             for (const first2Letters of saveBuckets) {
               const bucket = byFirst2Letters[first2Letters];
-              const filePath = path.resolve(__dirname, '../receipts-db', first2Letters + '.js');
-              const letterDir = path.resolve(__dirname, '../receipts-db', first2Letters.split('/')[0]);
-              if (!fs.existsSync(letterDir)) fs.mkdirSync(letterDir);
-              saveJsonp(filePath, bucket);
+              saveBucket(bucket);
             }
             process.stdout.write(' cursors...');
-            fs.writeFileSync(path.join(__dirname, '../receipts-db/cursor.json'), JSON.stringify({ listRepos: { cursor: nextList.data.cursor, time: Date.now() } }));
+            fs.writeFileSync(path.join(__dirname, '../receipts-db/cursor.json'), JSON.stringify({ listRepos: { cursor: nextList.data.cursor, time: Date.now() } }, null, 2));
             console.log(' OK');
           }
           const batchEndTime = Date.now();
-          console.log('  ' + (batchEndTime - start) / 1000 + 's, ' + (nextList.data?.repos?.length || 0) / (batchEndTime - start ) / 1000  + ' per second\n\n');
+          console.log('  ' + (batchEndTime - batchStart) / 1000 + 's, ' + (nextList.data?.repos?.length || 0) / (batchEndTime - batchStart) * 1000  + ' per second\n\n');
 
 
           if (!nextList.data?.cursor) break;
@@ -390,6 +838,13 @@ function receipts() {
         const first2Letters = getHandleBucket(shortHandle);
         const bucket = byFirst2Letters[first2Letters] || (byFirst2Letters[first2Letters] = {});
         const descr = displayName ? [shortHandle, displayName] : shortHandle;
+
+        const existingDescr = allUsers[shortDID];
+        if (existingDescr === descr) return ['NOOP', existingDescr];
+        if (Array.isArray(existingDescr) && Array.isArray(descr)
+          && existingDescr.length === descr.length
+          && !existingDescr.some((x, i) => x !== descr[i])) return ['NOOP', ...existingDescr];
+
         bucket[shortDID] = descr;
         allUsers[shortDID] = descr;
 
@@ -435,11 +890,23 @@ function receipts() {
     return shortDID.indexOf(':') < 0 ? 'did:plc:' + shortDID : shortDID;
   }
 
+  function unwrapShortHandle(shortHandle) {
+    return shortHandle.indexOf('.') < 0 ? shortHandle + '.bsky.social' : shortHandle;
+  }
+
   /** @param {string} handle */
   function shortenHandle(handle) {
     return handle && handle.replace(_shortenHandle_Regex, '');
   }
   const _shortenHandle_Regex = /\.bsky\.social$/;
+
+  /** @param {string} path */
+  function jsonpFuncName(path) {
+    return /** @type {string} */(path.split(/[/\\]/g).pop())
+      .replace(/\.js$/, '')
+      .replace(/[^a-z0-9]/ig, '')
+      .replace(/^([0-9]|do|if|in)/ig, '_$1');
+  }
 
   function detectEnvironmentAndRun() {
     var isBrowserEnvironment =
