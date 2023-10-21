@@ -647,7 +647,7 @@ function receipts() {
     /** @type {{ [shortDID: string]: { fetchMore(): Promise, posts: any[] }}} */
     var postsByDID;
 
-    async function displaySearchResultsFor(shortDID, shortHandle, displayName) {
+    async function displaySearchResultsFor(shortDID, shortHandle, displayName, searchString) {
 
       async function initialLoad() {
         dom.searchPane.style.display = 'none';
@@ -679,7 +679,6 @@ function receipts() {
         shortDID = searchMatches[0].shortDID;
         shortHandle = searchMatches[0].shortHandle;
         displayName = searchMatches[0].displayName;
-
       }
 
       async function loadWithConfirmedArgs() {
@@ -806,6 +805,7 @@ function receipts() {
           children: [
             postSearchINPUT = elem('input', {
               className: 'post-search-input',
+              value: searchString
             }),
             postSearchClear = elem('span', {
               className: 'post-search-clear',
@@ -848,6 +848,7 @@ function receipts() {
         }
 
         function handlePostSeachTypeDebounced() {
+          history.replaceState({}, '', '?handle=' + shortHandle + '&q=' + encodeURIComponent(postSearchINPUT.value));
           reflectRecords();
         }
 
@@ -1047,6 +1048,7 @@ function receipts() {
       const urlParams = new URLSearchParams(window.location.search);
       const did = urlParams.get('did');
       const handle = urlParams.get('handle');
+      const q = urlParams.get('q');
       dom.closeLink.style.display = 'block';
       dom.closeLink.onclick = () => {
         history.pushState({}, '', 'index.html');
@@ -1055,7 +1057,7 @@ function receipts() {
       };
 
       if (did || handle) {
-        displaySearchResultsFor(did, handle, undefined);
+        displaySearchResultsFor(did, handle, undefined, q);
       } else {
         displaySearchPage();
       }
@@ -1276,8 +1278,10 @@ function receipts() {
             console.log(' OK');
           }
           const batchEndTime = Date.now();
-          console.log('  ' + (batchEndTime - batchStart) / 1000 + 's, ' + (nextList.data?.repos?.length || 0) / (batchEndTime - batchStart) * 1000  + ' per second\n\n');
-
+          console.log(
+            '  ' + (batchEndTime - batchStart) / 1000 + 's, ' +
+            ((nextList.data?.repos?.length || 0) / (batchEndTime - batchStart) * 1000).toFixed(1) + ' per second ' +
+            '(total ' + Object.keys(allUsers).length + ' users)\n\n');
 
           if (!nextList.data?.cursor) break;
           currentCursor = nextList.data.cursor;
