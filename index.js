@@ -193,6 +193,10 @@ function receipts() {
   white-space: pre-wrap;
 }
 
+.resultsPane .post-list .post .post-content-line-text .post-content-line-text-highlight {
+  background: #d4edff;
+}
+
 .resultsPane .post-list .post .post-content-line-image {
   max-width: 100%;
   display: block;
@@ -931,8 +935,12 @@ function receipts() {
           lastRenderedPostCacheCount = postCache.length;
 
           for (let i = 0; i < searchResult.length; i++) {
-            const post = searchResult[i];
-            if (!post.dom) post.dom = renderPost(post);
+            const { post, rank, textHighlights } = searchResult[i];
+            if (!post.dom || post.textHighlights !== textHighlights) {
+              post.dom = renderPost(post, textHighlights);
+              post.textHighlights = textHighlights;
+            }
+
             if (postList.children[i] === post.dom) continue;
 
             if (postList.children[i]) {
@@ -963,7 +971,7 @@ function receipts() {
             postList.appendChild(elem('div', {
               className: 'post-list-continue',
               textContent:
-                searchResult.length + ' post' + (searchResult.length === 1 ? '' : 's') +
+                searchResult.length + ' matches' + (searchResult.length === 1 ? '' : 's') +
                 ' (searching amongst ' + postCache.length + ' post' + (postCache.length === 1 ? '' : 's') + '...)',
               onclick: () => {
                 fetcher.fetchMore().then(() => {
@@ -984,34 +992,111 @@ function receipts() {
          * @param {PostRecord[]} posts
          */
         function findMatchingPosts(searchText, posts) {
-          if (!(searchText || '').trim()) return posts;
+          if (!(searchText || '').trim()) return posts.map(post => ({ post, rank: 0, textHighlights: undefined }));
 
-          const textSearcherFn = textSearcher(searchText);
+          const postEntries = posts.map(post => {
+            const text = post.text;
+            let alt;
+            const images = /** @type {any[]} */(post.embed?.images);
+            if (images?.length) {
+              for (const img of images) {
+                if (img.alt) {
+                  if (alt) alt.push(img.alt);
+                  else alt = [img.alt];
+                }
+              }
+            }
+            return { text, alt, post };
+          });
+
+          const searchWords = searchText.split(/\s+/).filter(w => w.length);
+          const smallestWord = searchWords.reduce((smallest, w) => Math.min(smallest, w.length), 3);
+
+          const Fuse = fuse.default || fuse.Fuse || fuse
+          const fuseSearcher = new Fuse(postEntries, {
+            keys: ['text', 'alt'],
+            ignoreLocation: true,
+
+            includeScore: true,
+            includeMatches: true,
+            minMatchCharLength: smallestWord,
+            findAllMatches: true,
+            shouldSort: false
+          });
+
+          const searchEntries = fuseSearcher.search(searchText);
           const matches = [];
-          for (const post of posts) {
-            const rank =
-              textSearcherFn(post.text) +
+          for (const entry of searchEntries) {
+            const rank = entry.score;
+            if (typeof rank !== 'number' || rank > 0.4) continue;
+            const post = entry.item.post;
 
-              (!post.embed?.images?.length ? 0 :
-                post.embed.images.reduce((sum, img) =>
-                  sum + (!img.alt ? 0 : textSearcherFn(img.alt)),
-                  0)
-              );
+            let textHighlights;
+            if (entry.matches?.length) {
+              for (const match of entry.matches) {
+                if (match.key === 'text') {
+                  if (!textHighlights) textHighlights = [...entry.item.text].map(ch => ' ');
+                  for (const [start,end] of match.indices) {
+                    for (let i = start; i <= end; i++) {
+                      textHighlights[i] = entry.item.text[i];
+                    }
+                  }
+                }
+              }
+            }
 
-            if (rank > 0.001) matches.push({ rank, post });
+            matches.push({ rank, post, textHighlights: textHighlights && textHighlights.join('') });
           }
 
-          matches.sort((a, b) => b.rank - a.rank || a.post.uri.localeCompare(b.post.uri));
-          const postsOnly = matches.map(m => m.post);
+          console.log('matches: ', matches, ' searchEntries: ', searchEntries);
 
-          return postsOnly;
+          return matches;
         }
+      }
+
+      /**
+       * @param {string} text
+       * @param {string | undefined} textHighlights
+       * @param {string} highlightClassName
+       */
+      function renderTextWithHighlight(text, textHighlights, highlightClassName) {
+        if (!textHighlights || !text) return [text];
+
+        const result = [];
+        let clusterStart = 0;
+        for (let i = 1; i < textHighlights.length; i++) {
+          const ch = textHighlights[i];
+          if (ch === ' ') {
+            if (textHighlights[i - 1] === ' ') continue;
+            result.push(elem('span', {
+              className: highlightClassName,
+              textContent: text.slice(clusterStart, i)
+            }));
+            clusterStart = i;
+          } else {
+            if (textHighlights[i - 1] !== ' ') continue;
+            result.push(text.slice(clusterStart, i));
+            clusterStart = i;
+          }
+        }
+
+        if (clusterStart < text.length) {
+          if (textHighlights[clusterStart] === ' ')
+            result.push(text.slice(clusterStart));
+          else
+            result.push(elem('span', {
+              className: highlightClassName,
+              textContent: text.slice(clusterStart)
+            }));
+        }
+
+        return result;
       }
 
       /**
        * @param {PostRecord} post
        */
-      function renderPost(post) {
+      function renderPost(post, textHighlights) {
         const postUri = breakFeedUri(/** @type {string} */(post.uri));
 
         const postElem = elem('div', {
@@ -1034,7 +1119,7 @@ function receipts() {
                   children: [
                     elem('span', {
                       className: 'post-content-line-text',
-                      textContent: post.text
+                      children: renderTextWithHighlight(post.text, textHighlights, 'post-content-line-text-highlight')
                     })
                   ]
                 }),
@@ -1071,7 +1156,8 @@ function receipts() {
     /**
      * @typedef {import('./lib/node_modules/@atproto/api').AppBskyFeedPost.Record & {
      *  uri: string,
-     *  dom?: HTMLElement
+     *  dom?: HTMLElement,
+     *  textHighlights?: string
      * }} PostRecord
      */
 
