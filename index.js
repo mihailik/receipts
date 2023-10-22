@@ -1049,7 +1049,8 @@ function receipts() {
                       }),
                       elem('img', {
                         className: 'post-content-line-image',
-                        src: 'https://bsky.social/xrpc/com.atproto.sync.getBlob?did=' + unwrapShortDID(shortDID) + '&cid=' + post.embed?.images[0].image.ref,
+                        src: 'https://bsky.social/xrpc/com.atproto.sync.getBlob?did=' +
+                          unwrapShortDID(shortDID) + '&cid=' + img.image.ref,
                       })
                     ]
                   }))
