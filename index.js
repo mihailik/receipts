@@ -175,7 +175,9 @@ function receipts() {
 }
 
 .resultsPane .post-list .post {
-  padding: 0.5em 0;
+  padding: 0.5em 0 2em 0;
+  margin-bottom: 2em;
+  border-bottom: dotted 2px #e2e2e2;
 }
 
 .resultsPane .post-list .post .post-content-line-timestamp a {
@@ -189,6 +191,34 @@ function receipts() {
 .resultsPane .post-list .post .post-content-line-text {
   padding-top: 0.25em;
   white-space: pre-wrap;
+}
+
+.resultsPane .post-list .post .post-content-line-image {
+  max-width: 100%;
+  display: block;
+  clear: both;
+}
+
+.resultsPane .post-list .post .post-content-line-image-alt {
+  max-width: 60%;
+  float: right;
+  font-size: 90%;
+  background: #fff7ce;
+  padding: 0.25em 0.7em;
+  border: solid 1px #c7b554;
+  margin: 0.5em 0;
+}
+
+.resultsPane .post-list .post-list-continue {
+  color: gray;
+  font-style: italic;
+  animation: colorcycle 4s infinite;
+}
+
+.resultsPane .post-list .post-list-end {
+  color: gray;
+  font-weight: bold;
+  font-style: italic;
 }
 
 .resultsPane .search-panel {
@@ -237,6 +267,14 @@ function receipts() {
   border-radius: 2em;
   background-image: linear-gradient(-45deg, transparent 0%, transparent 46%, currentColor 46%, currentColor 56%,transparent 56%, transparent 100%), -webkit-linear-gradient(45deg, transparent 0%, transparent 46%, currentColor 46%, currentColor 56%,transparent 56%, transparent 100%);
   filter: drop-shadow(0px 0px 1px white) drop-shadow(3px -3px 10px white) drop-shadow(10px -10px 30px white);
+}
+
+@keyframes colorcycle {
+  0%    { opacity: 1; }
+  25%   { opacity: 0.5; color: #0044b5; }
+  50%   { opacity: 1; }
+  75%   { opacity: 0.6; color: #ff6600; }
+  100%  { opacity: 1; }
 }
 
 
@@ -644,7 +682,7 @@ function receipts() {
       displaySearchResultsFor(shortDID, shortHandle, displayName);
     }
 
-    /** @type {{ [shortDID: string]: { fetchMore(): Promise, posts: any[] }}} */
+    /** @type {{ [shortDID: string]: ReturnType<typeof createHistoryFetcher>}} */
     var postsByDID;
 
     async function displaySearchResultsFor(shortDID, shortHandle, displayName, searchString) {
@@ -775,13 +813,6 @@ function receipts() {
         }
       }
 
-      /**
-       * @typedef {import('./lib/node_modules/@atproto/api').AppBskyFeedPost.Record & {
-       *  uri: string,
-       *  dom?: HTMLElement
-       * }} PostRecord
-       */
-
       async function startFetchingPosts() {
         if (!postsByDID) postsByDID = {};
         const fetcher = postsByDID[shortDID] || (postsByDID[shortDID] = createHistoryFetcher(shortDID));
@@ -884,6 +915,7 @@ function receipts() {
           });
         }
 
+        var lastRenderedPostCacheCount;
         function reflectRecords() {
           // deduplicate
           for (const post of fetcher.posts) {
@@ -895,13 +927,20 @@ function receipts() {
 
           const searchResult = findMatchingPosts(postSearchINPUT.value, postCache);
 
+          let anyNew = lastRenderedPostCacheCount !== postCache.length;
+          lastRenderedPostCacheCount = postCache.length;
+
           for (let i = 0; i < searchResult.length; i++) {
             const post = searchResult[i];
             if (!post.dom) post.dom = renderPost(post);
+            if (postList.children[i] === post.dom) continue;
+
             if (postList.children[i]) {
               postList.insertBefore(post.dom, postList.children[i]);
+              anyNew = true;
             } else {
               postList.appendChild(post.dom);
+              anyNew = true;
             }
           }
 
@@ -909,7 +948,35 @@ function receipts() {
             postList.removeChild(postList.children[postList.children.length - 1]);
           }
 
-          handleScrollCore();
+          if (fetcher.endReached) {
+            postList.appendChild(elem('div', {
+              className: 'post-list-end',
+              textContent: searchResult.length + ' post' + (searchResult.length === 1 ? '' : 's'),
+              onclick: () => {
+                fetcher.fetchMore().then(() => {
+                  reflectRecords();
+                });
+                reflectRecords();
+              }
+            }));
+          } else {
+            postList.appendChild(elem('div', {
+              className: 'post-list-continue',
+              textContent:
+                searchResult.length + ' post' + (searchResult.length === 1 ? '' : 's') +
+                ' (searching amongst ' + postCache.length + ' post' + (postCache.length === 1 ? '' : 's') + '...)',
+              onclick: () => {
+                fetcher.fetchMore().then(() => {
+                  reflectRecords();
+                });
+                reflectRecords();
+              }
+            }));
+          }
+
+          if (anyNew) {
+            handleScrollCore();
+          }
         }
         
         /**
@@ -922,8 +989,16 @@ function receipts() {
           const textSearcherFn = textSearcher(searchText);
           const matches = [];
           for (const post of posts) {
-            const rank = textSearcherFn(post.text);
-            if (rank > 0.1) matches.push({ rank, post });
+            const rank =
+              textSearcherFn(post.text) +
+
+              (!post.embed?.images?.length ? 0 :
+                post.embed.images.reduce((sum, img) =>
+                  sum + (!img.alt ? 0 : textSearcherFn(img.alt)),
+                  0)
+              );
+
+            if (rank > 0.001) matches.push({ rank, post });
           }
 
           matches.sort((a, b) => b.rank - a.rank || a.post.uri.localeCompare(b.post.uri));
@@ -965,12 +1040,19 @@ function receipts() {
                 }),
                 /** @type {*} */(post.embed?.images)?.length && elem('div', {
                   className: 'post-content-line',
-                  children: [
-                    elem('img', {
-                      className: 'post-content-line-image',
-                      src: 'https://bsky.social/xrpc/com.atproto.sync.getBlob?did=' + unwrapShortDID(shortDID) + '&cid=' + post.embed?.images[0].image.ref,
-                    })
-                  ]
+                  children: post.embed?.images.map(img => elem('div', {
+                    className: 'post-content-line-image-entry',
+                    children: [
+                      img.alt && elem('div', {
+                        className: 'post-content-line-image-alt',
+                        textContent: img.alt
+                      }),
+                      elem('img', {
+                        className: 'post-content-line-image',
+                        src: 'https://bsky.social/xrpc/com.atproto.sync.getBlob?did=' + unwrapShortDID(shortDID) + '&cid=' + post.embed?.images[0].image.ref,
+                      })
+                    ]
+                  }))
                 })
               ]
             })
@@ -980,68 +1062,79 @@ function receipts() {
         return postElem;
       }
 
-      function createHistoryFetcher(shortDID) {
-        const atClient = new atproto_api.BskyAgent({ service: 'https://bsky.social/xrpc' });
-
-        let fetchMorePromise;
-
-        const postsSeen = {};
-
-        let cursor = undefined;
-        let endReached = false;
-        let lastResponseTime;
-        const fetcher = {
-          fetchMore,
-          posts: /** @type {PostRecord[]} */([])
-        };
-        return fetcher;
-
-        function fetchMore() {
-          if (!fetchMorePromise) {
-            fetchMorePromise = fetchMoreCore();
-          }
-
-          return fetchMorePromise
-        }
-
-        async function fetchMoreCore() {
-          if (endReached && lastResponseTime && Date.now() - lastResponseTime < 1000) {
-            await new Promise(resolve => setTimeout(resolve, Math.random() * 5000 + 5000));
-          }
-
-          const posts = await atClient.com.atproto.repo.listRecords({
-            collection: 'app.bsky.feed.post',
-            repo: unwrapShortDID(shortDID),
-            cursor
-          });
-
-          if (posts.data.cursor)
-            cursor = posts.data.cursor;
-
-          endReached = !posts.data.cursor;
-            
-
-          for (const p of posts.data.records) {
-            if (p.uri in postsSeen) continue;
-            postsSeen[p.uri] = true;
-
-            const combinePostAndRecord = {
-              ...p,
-              ...p.value
-            };
-
-            fetcher.posts.push(/** @type {*} */(combinePostAndRecord));
-          }
-
-          lastResponseTime = Date.now();
-
-          fetchMorePromise = undefined;
-        }
-      }
-
       await initialLoad();
       await loadWithConfirmedArgs();
       await startFetchingPosts();
+    }
+
+    /**
+     * @typedef {import('./lib/node_modules/@atproto/api').AppBskyFeedPost.Record & {
+     *  uri: string,
+     *  dom?: HTMLElement
+     * }} PostRecord
+     */
+
+    function createHistoryFetcher(shortDID) {
+      const atClient = new atproto_api.BskyAgent({ service: 'https://bsky.social/xrpc' });
+
+      let fetchMorePromise;
+
+      const postsSeen = {};
+
+      let cursor = undefined;
+      let endReached = false;
+      let lastResponseTime;
+      const fetcher = {
+        fetchMore,
+        posts: /** @type {PostRecord[]} */([]),
+        endReached: false
+      };
+      return fetcher;
+
+      /** @returns {Promise<boolean | void>} */
+      function fetchMore() {
+        if (!fetchMorePromise) {
+          fetchMorePromise = fetchMoreCore();
+        }
+
+        return fetchMorePromise
+      }
+
+      async function fetchMoreCore() {
+        if (endReached && lastResponseTime && Date.now() - lastResponseTime < 1000) {
+          return false;
+        }
+
+        fetcher.endReached = endReached = false;
+
+        const posts = await atClient.com.atproto.repo.listRecords({
+          collection: 'app.bsky.feed.post',
+          repo: unwrapShortDID(shortDID),
+          cursor
+        });
+
+        if (posts.data.cursor)
+          cursor = posts.data.cursor;
+
+        fetcher.endReached = endReached = !posts.data.cursor;
+
+
+        for (const p of posts.data.records) {
+          if (p.uri in postsSeen) continue;
+          postsSeen[p.uri] = true;
+
+          const combinePostAndRecord = {
+            ...p,
+            ...p.value
+          };
+
+          fetcher.posts.push(/** @type {*} */(combinePostAndRecord));
+        }
+
+        lastResponseTime = Date.now();
+
+        fetchMorePromise = undefined;
+      }
     }
 
     function displaySearchPage(preloadSearchText) {
