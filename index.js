@@ -635,6 +635,7 @@ function receipts() {
       const mushMatchLead = new RegExp('^' + [...searchText.replace(/[^a-z0-9]/gi, '')].join('.*'), 'i');
 
       const lowercaseSearchText = searchText.trim().toLowerCase();
+      const lettersOnlySearchText = lowercaseSearchText.replace(/[^a-z0-9]/gi, '');
 
       const searchWordRegExp = new RegExp(
         searchText.split(/\s+/)
@@ -647,15 +648,17 @@ function receipts() {
 
       return matchRank;
 
-      /** @param {string} matchText @param {boolean=} startOnly */
-      function matchRank(matchText, startOnly) {
+      /** @param {string} matchText */
+      function matchRank(matchText) {
         let rank = 0;
-        if (matchText === searchText) rank += 60;
-        else if (matchText.toLowerCase() === lowercaseSearchText) rank += 55;
-        else {
-          const pos = lowercaseSearchText.indexOf(matchText.toLowerCase().trim());
-          if (!pos) rank += 30;
-          if (pos > 0) rank += 20;
+        if (matchText === searchText) return 600;
+        else if (matchText.toLowerCase() === lowercaseSearchText) return 550;
+
+        if (matchText.trim().toLowerCase().replace(/[^a-z0-9]/gi, '') === lettersOnlySearchText) return 400;
+        {
+          const posLowerc = lowercaseSearchText.indexOf(matchText.toLowerCase().trim());
+          if (!posLowerc) rank += 30;
+          if (posLowerc > 0) rank += 20;
         }
 
         searchWordRegExp.lastIndex = 0;
@@ -684,12 +687,12 @@ function receipts() {
       for (const shortDID in bucket) {
         let rank = 0;
         let shortHandle = bucket[shortDID];
-        let fullHandle = unwrapShortHandle(shortHandle);
         let displayName;
         if (Array.isArray(shortHandle)) {
           displayName = shortHandle[1];
           shortHandle = shortHandle[0];
         }
+        let fullHandle = unwrapShortHandle(shortHandle);
 
         if (displayName) {
           rank += textSearcherFn(displayName) * 20;
@@ -1042,7 +1045,7 @@ function receipts() {
           const searchWords = searchText.split(/\s+/).filter(w => w.length);
           const smallestWord = searchWords.reduce((smallest, w) => Math.min(smallest, w.length), 3);
 
-          const Fuse = fuse.default || fuse.Fuse || fuse
+          const Fuse = fuse.default || /** @type {*} */(fuse).Fuse || fuse
           const fuseSearcher = new Fuse(postEntries, {
             keys: ['text', 'alt'],
             ignoreLocation: true,
@@ -1155,7 +1158,7 @@ function receipts() {
                 }),
                 /** @type {*} */(post.embed?.images)?.length && elem('div', {
                   className: 'post-content-line',
-                  children: post.embed?.images.map(img => elem('div', {
+                  children: /** @type {*} */(post.embed?.images).map(img => elem('div', {
                     className: 'post-content-line-image-entry',
                     children: [
                       img.alt && elem('div', {
