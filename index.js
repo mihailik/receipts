@@ -96,10 +96,14 @@ function receipts() {
   padding-right: 0.12em;
 }
 
+.searchPane .autocomplete .autocomplete-item .bsky-social {
+  color: #587dc0;
+}
+
 .searchPane .autocomplete .autocomplete-item .autocomplete-item-displayName {
   padding-left: 0.5em;
   zoom: 0.8;
-  transform: scaleY(1.1);
+  transform: scaleY(1.15) translateY(-0.07em);
   display: inline-block;
   font-weight: 300;
   opacity: 0.8;
@@ -127,7 +131,10 @@ function receipts() {
 
 .statsPane {
   grid-row: 4;
-  padding: 2em 2em 0 2em;
+}
+
+.statsPane .title {
+  padding: 1em 1em 0 1em;
 }
 
 .statsPane .avatar .avatar-image {
@@ -140,6 +147,14 @@ function receipts() {
 .statsPane .handle {
   padding-bottom: 0.5em;
   display: block;
+}
+
+.statsPane .bsky-social {
+  color: #587dc0;
+  zoom: 0.9;
+  transform: scaleY(1.14) translateY(-0.04em);
+  transform-origin: left;
+  display: inline-block;
 }
 
 .statsPane .did {
@@ -156,8 +171,11 @@ function receipts() {
   clear: both;
   font: inherit;
   white-space: pre-line;
-  padding-top: 2em;
-  padding-left: 1em;
+  margin: 0;
+  padding: 1em 1em 0.5em 1em;
+  font-size: 90%;
+  max-height: 9em;
+  overflow-y: auto;
 }
 
 .resultsPane {
@@ -284,7 +302,7 @@ function receipts() {
 
 @media (max-width: 800px) {
   #receiptsHost {
-    grid-template-rows: 1fr auto auto auto 5fr;
+    grid-template-rows: 1fr auto auto auto 7fr;
     grid-template-columns: 1fr;
   }
 
@@ -595,6 +613,8 @@ function receipts() {
           children: [
             elem('span', { className: 'autocomplete-item-at', textContent: '@' }),
             elem('span', { className: 'autocomplete-item-handle', textContent: match.shortHandle }),
+            match.shortHandle === unwrapShortHandle(match.shortHandle) ? undefined :
+              elem('span', { className: 'bsky-social', textContent: '.bsky.social' }),
             match.displayName &&
               elem('span', { className: 'autocomplete-item-displayName', textContent: match.displayName }),
           ]
@@ -614,6 +634,8 @@ function receipts() {
       const mushMatch = new RegExp([...searchText.replace(/[^a-z0-9]/gi, '')].join('.*'), 'i');
       const mushMatchLead = new RegExp('^' + [...searchText.replace(/[^a-z0-9]/gi, '')].join('.*'), 'i');
 
+      const lowercaseSearchText = searchText.trim().toLowerCase();
+
       const searchWordRegExp = new RegExp(
         searchText.split(/\s+/)
           // sort longer words match first
@@ -628,6 +650,14 @@ function receipts() {
       /** @param {string} matchText @param {boolean=} startOnly */
       function matchRank(matchText, startOnly) {
         let rank = 0;
+        if (matchText === searchText) rank += 60;
+        else if (matchText.toLowerCase() === lowercaseSearchText) rank += 55;
+        else {
+          const pos = lowercaseSearchText.indexOf(matchText.toLowerCase().trim());
+          if (!pos) rank += 30;
+          if (pos > 0) rank += 20;
+        }
+
         searchWordRegExp.lastIndex = 0;
         while (true) {
           const match = searchWordRegExp.exec(matchText);
@@ -748,7 +778,7 @@ function receipts() {
               textContent: shortHandle,
               children: unwrapShortHandle(shortHandle) !== shortHandle && [
                 elem('span', {
-                  className: 'bsky.social',
+                  className: 'bsky-social',
                   textContent: '.bsky.social'
                 })
               ] || undefined
