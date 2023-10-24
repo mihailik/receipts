@@ -302,7 +302,7 @@ function receipts() {
 
 @media (max-width: 800px) {
   #receiptsHost {
-    grid-template-rows: 1fr auto auto auto 7fr;
+    grid-template-rows: 1fr auto auto auto 10fr;
     grid-template-columns: 1fr;
   }
 
