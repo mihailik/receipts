@@ -576,7 +576,7 @@ function receipts() {
       const bucket = await loadBucketFor(searchText);
       if (dom.searchINPUT.value !== searchText || handleSearchType_debounceTimeout !== searchInstance) return;
 
-      const searchMatches = findSearchMatches(searchText, bucket);
+      const searchMatches = await findSearchMatches(searchText, bucket);
       if (dom.searchINPUT.value !== searchText || handleSearchType_debounceTimeout !== searchInstance) return;
 
       updateSearchMatches(searchText, searchMatches);
@@ -676,11 +676,45 @@ function receipts() {
       }
     }
 
+    var directDIDMatches;
+
     /**
      * @param {string} searchText
      * @param {{ [shortDID: string]: string | [shortHandle: string, displayName: string] }} bucket 
      */
     function findSearchMatches(searchText, bucket) {
+      if (!searchText.trim().indexOf('did:') || searchText.trim().length === 24 && !/[^\sa-z0-9]/i.test(searchText)) {
+        const shortDID = shortenDID(searchText.trim().toLowerCase()) || '';
+
+        if (directDIDMatches && directDIDMatches[shortDID]) return directDIDMatches[shortDID];
+
+        if (!directDIDMatches) directDIDMatches = {};
+
+        return directDIDMatches[shortDID] = (async () => {
+          await waitForLibrariesLoaded;
+          const atClient = new atproto_api.BskyAgent({ service: 'https://bsky.social/xrpc' });
+          const describePromise = atClient.com.atproto.repo.describeRepo({
+            repo: unwrapShortDID(shortDID)
+          });
+          const profilePromise = atClient.com.atproto.repo.listRecords({
+            collection: 'app.bsky.actor.profile',
+            repo: unwrapShortDID(shortDID)
+          });
+
+          const [describe, profile/*, blocks*/] = await Promise.all([describePromise, profilePromise/*, blocksPromise*/]);
+
+          const shortHandle = shortenHandle(describe.data?.handle);
+          const displayName = profile.data.records.map(rec => /** @type {*} */(rec.value).displayName).filter(d => d)[0];
+
+          return directDIDMatches[shortDID] = [{
+            rank: 0,
+            shortDID,
+            shortHandle,
+            displayName
+          }];
+        })();
+      }
+
       const textSearcherFn = textSearcher(searchText);
 
       const searchMatches = [];
@@ -714,15 +748,23 @@ function receipts() {
     }
 
     function navigateToSearchAccount(shortDID, shortHandle, displayName) {
-      history.pushState({}, '', '?handle=' + shortHandle);
-
-      displaySearchResultsFor(shortDID, shortHandle, displayName);
+      if (directDIDMatches?.[shortDID]) {
+        history.pushState({}, '', '?did=' + unwrapShortDID(shortDID));
+        displaySearchResultsFor(shortDID, undefined, displayName);
+      } else {
+        history.pushState({}, '', '?handle=' + unwrapShortHandle(shortHandle));
+        displaySearchResultsFor(shortDID, shortHandle, displayName);
+      }
     }
 
     /** @type {{ [shortDID: string]: ReturnType<typeof createHistoryFetcher>}} */
     var postsByDID;
 
     async function displaySearchResultsFor(shortDID, shortHandle, displayName, searchString) {
+      if (shortDID)
+        shortDID = (shortenDID(shortDID) || '').toLowerCase();
+      if (shortHandle)
+        shortHandle = shortHandle.toLowerCase();
 
       async function initialLoad() {
         dom.searchPane.style.display = 'none';
@@ -744,8 +786,31 @@ function receipts() {
           parent: dom.statsPane
         });
 
-        const bucket = await loadBucketFor(shortHandle || shortDID);
-        const searchMatches = bucket && findSearchMatches(shortHandle || shortDID, bucket);
+        const bucket = shortHandle ? await loadBucketFor(shortHandle || '') : {};
+
+        if (shortHandle) {
+          // search for exact match, most of times it will land here
+
+          const matchShortHandle = shortenHandle(shortHandle); // normalizing the input explicitly before matching
+
+          for (const pickShortDID in bucket) {
+            let pickShortHandle = bucket[pickShortDID];
+            let pickDisplayName;
+            if (Array.isArray(pickShortHandle)) {
+              pickDisplayName = pickShortHandle[1];
+              pickShortHandle = pickShortHandle[0];
+            }
+
+            if (pickShortHandle === matchShortHandle) {
+              shortDID = pickShortDID;
+              shortHandle = pickShortHandle;
+              displayName = pickDisplayName;
+              return;
+            }
+          }
+        }
+
+        const searchMatches = bucket && await findSearchMatches(shortHandle || shortDID, bucket);
         if (!searchMatches?.length) {
           displaySearchPage(shortHandle || (shortDID ? unwrapShortDID(shortDID) : ''));
           return;
@@ -916,8 +981,15 @@ function receipts() {
         }
 
         function handlePostSeachTypeDebounced() {
-          history.replaceState({}, '', '?handle=' + shortHandle + '&q=' + encodeURIComponent(postSearchINPUT.value));
+          if (directDIDMatches?.[shortDID]) {
+            history.replaceState({}, '', '?did=' + shortDID + '&q=' + encodeURIComponent(postSearchINPUT.value));
+          } else {
+            history.replaceState({}, '', '?handle=' + shortHandle + '&q=' + encodeURIComponent(postSearchINPUT.value));
+          }
           reflectRecords();
+          fetcher.fetchMore().then(() => {
+            reflectRecords();
+          });
         }
 
         /** @param {KeyboardEvent} e */
