@@ -3,6 +3,12 @@
 
 function receipts() {
   function runInBrowser() {
+
+    let overrideLang =
+      /ua/i.test(location.host || '') || /ua/i.test(window.name || '') ||
+      (navigator.languages || []).some(lang => /ru/i.test(lang || '')) ? 'ua' :
+      undefined;
+
     function initSearchPageDOM() {
       const host = elem('div', {
         id: 'receiptsHost',
@@ -10,17 +16,22 @@ function receipts() {
 <div class=banner>
 </div>
 <div class=titlePane>
-  <h2> History search: </h2>
+  <h2> ${overrideLang === 'ua' ? 'Пошук в історії:' : 'History search:'} </h2>
 </div>
 <div class=searchPane>
-  <input id=searchINPUT placeholder='Who are we talking about?'>
+  <input id=searchINPUT placeholder='${overrideLang === 'ua' ? 'Кого шукаємо?' : 'Who are we talking about?'}'>
 </div>
 <div class=statsPane>
 </div>
 <div class=closeLink></div>
 <div class=resultsPane>
 <div style="padding: 1em;">
-  Searching BlueSky activity of a user: to verify their identity, and to find their receipts.
+  ${
+          overrideLang === 'ua' ? 
+          'Пошук активності акаунтів BluSki, користуйтеся для розшуку чи перевірки людини.' :
+          'Searching BlueSky activity of a user: to verify their identity, and to find their receipts.'
+  }
+  
 </div>
 </div>
 
@@ -495,16 +506,16 @@ function receipts() {
       return /** @type {*} */(el);
     }
 
-    function getInputSelectionShortDID(searchINPUT) {
+    function getInputSelectedItem(searchINPUT) {
       if (!searchINPUT.autocompleteDIV) return;
       const items = [...searchINPUT.autocompleteDIV.querySelectorAll('.autocomplete-item')];
       for (const item of items) {
-        if (item.classList.contains('selected')) return item.shortDID;
+        if (item.classList.contains('selected')) return item;
       }
     }
 
     /** @param {KeyboardEvent} e */
-    function handleInputKeydown(e) {
+    function handleAccountSearchInputKeydown(e) {
       const ArrowDown = 40;
       const ArrowUp = 38;
       if (e.keyCode === ArrowDown) {
@@ -526,7 +537,7 @@ function receipts() {
         const items = [...dom.searchINPUT.autocompleteDIV.querySelectorAll('.autocomplete-item')];
         if (!items.length) return;
 
-        const selectedShortDID = getInputSelectionShortDID(dom.searchINPUT);
+        const selectedShortDID = getInputSelectedItem(dom.searchINPUT)?.shortDID;
         const selectedIndex = items.findIndex(item => /** @type {*} */(item).shortDID === selectedShortDID);
 
         const nextSelectedIndex = selectedIndex < 0 ?
@@ -539,18 +550,40 @@ function receipts() {
         }
       }
 
-      function acceptSelection() {
-        const items = [...(dom.searchINPUT.autocompleteDIV?.querySelectorAll('.autocomplete-item') || [])];
-        if (!items.length) return;
+      async function acceptSelection() {
+        const items = [...(
+          !/none/i.test(dom.searchINPUT.autocompleteDIV?.style?.display || '') &&
+          dom.searchINPUT.autocompleteDIV?.querySelectorAll('.autocomplete-item') || [])];
 
-        let navToShortDID = getInputSelectionShortDID(dom.searchINPUT);
+        const inputSelectedItem = getInputSelectedItem(dom.searchINPUT);
+
+        let navToShortDID = inputSelectedItem?.shortDID;
+        let navToShortHandle = inputSelectedItem?.shortHandle;
+
         if (!navToShortDID) {
-          navToShortDID =/** @type {*} */(items[0]).shortDID;
-          if (!navToShortDID) return;
-        }
+          const topItem = /** @type {*} */(items[0]);
+          if (topItem?.shortDID && topItem?.rank > 20) {
+            navToShortDID = topItem.shortDID;
+            navToShortHandle = topItem.shortHandle;
+          } else if (likelyDID(dom.searchINPUT.value)) {
+            navToShortDID = dom.searchINPUT.value;
+          } else {
+            const acceptSelectionInputValue = dom.searchINPUT.value;
+            const atClient = new atproto_api.BskyAgent({ service: 'https://bsky.social/xrpc' });
+            let resolved;
+            try {
+              resolved = await atClient.com.atproto.identity.resolveHandle({ handle: unwrapShortHandle(acceptSelectionInputValue) });
+            } catch (error) {
+              return;
+            }
 
-        // @ts-ignore
-        const navToShortHandle = items.find(item => item.shortDID === navToShortDID)?.shortHandle;
+            if (!resolved.data.did || dom.searchINPUT.value !== acceptSelectionInputValue)
+              return;
+
+            navToShortHandle = acceptSelectionInputValue;
+            navToShortDID = resolved.data.did;
+          }
+        }
 
         navigateToSearchAccount(navToShortDID, navToShortHandle, undefined);
       }
@@ -603,7 +636,7 @@ function receipts() {
         dom.searchINPUT.autocompleteDIV.style.display = 'block';
       }
 
-      const selectedShortDID = getInputSelectionShortDID(dom.searchINPUT);
+      const selectedShortDID = getInputSelectedItem(dom.searchINPUT);
 
       dom.searchINPUT.autocompleteDIV.innerHTML = '';
       for (const match of searchMatches) {
@@ -619,8 +652,10 @@ function receipts() {
               elem('span', { className: 'autocomplete-item-displayName', textContent: match.displayName }),
           ]
         });
-        /** @type {*} */(matchElem).shortDID = match.shortDID;
-        /** @type {*} */(matchElem).shortHandle = match.shortHandle;
+        for (const key in match) if (!(key in matchElem)) {
+          matchElem[key] = match[key];
+        }
+
         if (match.shortDID === selectedShortDID) matchElem.classList.add('selected');
 
         matchElem.onclick = () => {
@@ -651,12 +686,16 @@ function receipts() {
       /** @param {string} matchText */
       function matchRank(matchText) {
         let rank = 0;
-        if (matchText === searchText) return 600;
-        else if (matchText.toLowerCase() === lowercaseSearchText) return 550;
+        const trimmedMatchText = matchText.trim();
+        const lowercaseTrimmedMatchText = trimmedMatchText.toLowerCase();
+        if (!lowercaseTrimmedMatchText) return 0;
+
+        if (trimmedMatchText === searchText) return 600;
+        else if (lowercaseTrimmedMatchText === lowercaseSearchText) return 550;
 
         if (matchText.trim().toLowerCase().replace(/[^a-z0-9]/gi, '') === lettersOnlySearchText) return 400;
         {
-          const posLowerc = lowercaseSearchText.indexOf(matchText.toLowerCase().trim());
+          const posLowerc = lowercaseTrimmedMatchText.indexOf(lowercaseSearchText);
           if (!posLowerc) rank += 30;
           if (posLowerc > 0) rank += 20;
         }
@@ -676,6 +715,13 @@ function receipts() {
       }
     }
 
+    function likelyDID(text) {
+      return text && (
+        !text.trim().indexOf('did:') ||
+        text.trim().length === 24 && !/[^\sa-z0-9]/i.test(text)
+      );
+    }
+
     var directDIDMatches;
 
     /**
@@ -683,7 +729,7 @@ function receipts() {
      * @param {{ [shortDID: string]: string | [shortHandle: string, displayName: string] }} bucket 
      */
     function findSearchMatches(searchText, bucket) {
-      if (!searchText.trim().indexOf('did:') || searchText.trim().length === 24 && !/[^\sa-z0-9]/i.test(searchText)) {
+      if (likelyDID(searchText)) {
         const shortDID = shortenDID(searchText.trim().toLowerCase()) || '';
 
         if (directDIDMatches && directDIDMatches[shortDID]) return directDIDMatches[shortDID];
@@ -744,7 +790,10 @@ function receipts() {
 
     function loadBucketFor(handleOrSearch) {
       const first2Letters = getHandleBucket(handleOrSearch);
-      return loadJsonp('../receipts-db/' + first2Letters + '.js');
+      const lead = /ua/i.test(location.host || '') ?
+          '//mihailik.github.io/' :
+          '../';
+      return loadJsonp(lead + 'receipts-db/' + first2Letters + '.js');
     }
 
     function navigateToSearchAccount(shortDID, shortHandle, displayName) {
@@ -808,10 +857,19 @@ function receipts() {
               return;
             }
           }
+
+          const atClient = new atproto_api.BskyAgent({ service: 'https://bsky.social/xrpc' });
+          try {
+            const resolved = await atClient.com.atproto.identity.resolveHandle({ handle: unwrapShortHandle(shortHandle) });
+            if (resolved.data.did) {
+              shortDID = shortenDID(resolved.data.did);
+              return;
+            }
+          } catch (err) {}
         }
 
         const searchMatches = bucket && await findSearchMatches(shortHandle || shortDID, bucket);
-        if (!searchMatches?.length) {
+        if (!searchMatches?.length) { // if score too bad, flip out too
           displaySearchPage(shortHandle || (shortDID ? unwrapShortDID(shortDID) : ''));
           return;
         }
@@ -1331,13 +1389,15 @@ function receipts() {
 
     function displaySearchPage(preloadSearchText) {
       dom.searchINPUT.oninput = handleSearchType;
-      dom.searchINPUT.onkeydown = handleInputKeydown;
+      dom.searchINPUT.onkeydown = handleAccountSearchInputKeydown;
       dom.searchINPUT.onkeyup = handleSearchType;
       dom.searchINPUT.onchange = handleSearchType;
 
       dom.banner.style.backgroundImage = '';
       dom.closeLink.style.display = 'none';
-      dom.titleH2.textContent = ' History search:';
+      dom.titleH2.textContent = overrideLang === 'ua' ?
+        ' Пошук в історії:' :
+        ' History search:';
       dom.statsPane.innerHTML = '';
       dom.searchPane.style.display = 'block';
 
