@@ -703,7 +703,7 @@ function receipts() {
         searchWordRegExp.lastIndex = 0;
         while (true) {
           const match = searchWordRegExp.exec(matchText);
-          if (!match) break;
+          if (!match?.[0]) break;
           rank += (match[0].length / matchText.length);
           if (match.index === 0) rank += 3;
         }
