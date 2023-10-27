@@ -328,6 +328,7 @@ function receipts() {
   .titlePane {
     grid-row: 2;
     grid-column: 1;
+    overflow: auto;
   }
 
   .searchPane {
