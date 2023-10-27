@@ -7,7 +7,11 @@ function receipts() {
     let overrideLang =
       /ua/i.test(location.host || '') || /ua/i.test(window.name || '') ||
       (navigator.languages || []).some(lang => /ru/i.test(lang || '')) ? 'ua' :
-      undefined;
+        undefined;
+    
+    if (overrideLang === 'ua') {
+      document.title = 'BlueSky пошук по історії';
+    }
 
     function initSearchPageDOM() {
       const host = elem('div', {
@@ -1225,8 +1229,15 @@ function receipts() {
             postList.appendChild(elem('div', {
               className: 'post-list-continue',
               textContent:
-                searchResult.length + ' match' + (searchResult.length === 1 ? '' : 'es') +
-                ' (searching amongst ' + postCache.length + ' post' + (postCache.length === 1 ? '' : 's') + '...)',
+                overrideLang == 'ua' ?
+                  (
+                    searchResult.length + ' знайдено' +
+                    ' (пошук поміж ' + postCache.length + ' твіт' + (postCache.length % 10 === 1 && postCache.length !== 11 ? 'у' : 'ів') + '...)'
+                  ):
+                  (
+                    searchResult.length + ' match' + (searchResult.length === 1 ? '' : 'es') +
+                  ' (searching amongst ' + postCache.length + ' post' + (postCache.length === 1 ? '' : 's') + '...)'
+                  ),
               onclick: () => {
                 fetcher.fetchMore().then(() => {
                   reflectRecords();
@@ -1447,7 +1458,7 @@ function receipts() {
               parentCount++;
 
               expandThreadAboveElement.textContent =
-                overrideLang === 'ua' ? parentCount + ' ' + ((parentCount % 10) === 1 ? 'попередній' : 'попередніх') + '⤵' :
+                overrideLang === 'ua' ? parentCount + ' ' + (parentCount % 10 === 1 && parentCount !== 11 ? 'попередній' : 'попередніх') + '⤵' :
                   parentCount + ' previous⤵';
 
               parent = parentPost.reply?.parent;
@@ -1494,6 +1505,7 @@ function receipts() {
                       })),
                       postShortDID && (handleElem = elem('span', { className: 'post-content-line-handle' })),
                       elem('a', {
+                        target: '_blank',
                         href: postUri && 'https://bsky.app/profile/' + unwrapShortHandle(shortHandle) + '/post/' + postUri.postID,
                         children: renderPostTime(post.createdAt)
                       })
