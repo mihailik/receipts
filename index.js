@@ -209,12 +209,88 @@ function receipts() {
   border-bottom: dotted 2px #e2e2e2;
 }
 
+.resultsPane .post-list .post.injected-parent {
+  margin-left: 3em;
+  font-size: 80%;
+  border-left: solid 1px cornflowerblue;
+  margin-bottom: 0;
+  padding-left: 0.5em;
+  padding-bottom: 1em;
+  border-bottom: solid 1px #9cbfff;
+}
+
+.resultsPane .post-list .post.injected-parent:first-child {
+  border-top: solid 1px cornflowerblue;
+  border-top-left-radius: 0.5em;
+  border-top-right-radius: 0.5em;
+}
+
+.resultsPane .post-list .post-content-expand-thread-above {
+  display: inline-block;
+  font-size: 86%;
+  padding: 0.2em 0.5em;
+  border: solid 1px #c0d3f6;
+  border-radius: 0.4em;
+  color: cornflowerblue;
+  background: #edf4ff;
+  cursor: pointer;
+}
+
+.resultsPane .post-list .post-content-expand-thread-above.expanded {
+  cursor: default;
+  display: block;
+  border-bottom-right-radius: 0;
+  border-top-right-radius: 0;
+  margin-right: -0.6em;
+  padding-left: 1em;
+  background: white;
+  color: gray;
+  border-color: cornflowerblue;
+  margin-top: -1px;
+}
+
+.resultsPane .post-list .post .post-content-line-timestamp.asreply {
+  padding-left: 0.6em;
+}
+
 .resultsPane .post-list .post .post-content-line-timestamp a {
   color: royalblue;
   text-decoration: none;
 }
 .resultsPane .post-list .post .post-content-line-timestamp a:hover {
   text-decoration: underline;
+}
+
+.resultsPane .post-list .post .post-content-line.asreply {
+  padding-left: 0.6em;
+}
+
+.resultsPane .post-list .post .post-content-line-avatar {
+  display: inline-block;
+  float: left;
+  width: 2.5em;
+  height: 2.5em;
+  margin-top: 0.25em;
+  margin-right: 0.65em;
+  margin-bottom: 0.25em;
+  background: silver;
+  border-radius: 200%;
+}
+
+.resultsPane .post-list .post .post-content-line-avatar.loaded {
+  background: none;
+  border-radius: none;
+}
+
+.resultsPane .post-list .post .post-content-line-avatar.loaded img {
+  width: 2.5em;
+  height: 2.5em;
+  border-radius: 200%;
+}
+
+.resultsPane .post-list .post .post-content-line-handle {
+  font-weight: bold;
+  padding-right: 0.5em;
 }
 
 .resultsPane .post-list .post .post-content-line-text {
@@ -456,7 +532,7 @@ function receipts() {
      *     Partial<HTMLElementTagNameMap[TagName]
      *  >, 'children' | 'parent' | 'parentElement' | 'style'> &
      *  {
-     *    children?: (Element | string | null | void | undefined)[],
+     *    children?: (Element | string | null | void | undefined)[] | Element | string | null | void | undefined,
      *    parent?: Element | null, 
      *    parentElement?: Element | null,
      *    style?: string | Partial<HTMLElement['style']>
@@ -498,7 +574,7 @@ function receipts() {
         }
 
         if (appendChildren) {
-          for (const child of appendChildren) {
+          for (const child of Array.isArray(appendChildren) || /** @type {*} */(appendChildren).length > 0 ? appendChildren : [appendChildren]) {
             if (child == null) continue;
             if (typeof child === 'string') {
               const childText = document.createTextNode(child);
@@ -816,7 +892,19 @@ function receipts() {
     }
 
     /** @type {{ [shortDID: string]: ReturnType<typeof createHistoryFetcher>}} */
-    var postsByDID;
+    var postsByShortDID;
+
+    /**
+     * @type {{ [shortDID: string]: {
+     *  shortDID: string;
+     *  shortHandle: string;
+     *  avatarUrl: string;
+     *  bannerUrl: string;
+     *  displayName: string;
+     *  description: string;
+     * }}}
+     */
+    var profileDetailsByShortDID;
 
     async function displaySearchResultsFor(shortDID, shortHandle, displayName, searchString) {
       if (shortDID)
@@ -845,6 +933,8 @@ function receipts() {
         });
 
         const bucket = shortHandle ? await loadBucketFor(shortHandle || '') : {};
+
+        await waitForLibrariesLoaded;
 
         if (shortHandle) {
           // search for exact match, most of times it will land here
@@ -949,42 +1039,28 @@ function receipts() {
         };
 
         async function updateAvatarAndBio() {
-          const atClient = new atproto_api.BskyAgent({ service: 'https://bsky.social/xrpc' });
-          const profile = await atClient.com.atproto.repo.listRecords({
-            collection: 'app.bsky.actor.profile',
-            repo: unwrapShortDID(shortDID)
-          });
-          /** @type {*} */
-          const profileRec = profile.data.records?.filter(rec => rec.value)[0]?.value;
-          const avatarCid = profileRec?.avatar?.ref?.toString();
-          const avatarUrl = avatarCid && 'https://bsky.social/xrpc/com.atproto.sync.getBlob?did=' + unwrapShortDID(shortDID) + '&cid=' + avatarCid;
-          const bannerCid = profileRec?.banner?.ref?.toString();
-          const bannerUrl = bannerCid && 'https://bsky.social/xrpc/com.atproto.sync.getBlob?did=' + unwrapShortDID(shortDID) + '&cid=' + bannerCid;
-          const displayName = profileRec?.displayName;
-          const description = profileRec?.description;
+          const profileDetails = await getProfileDetailsByShortDID(shortDID);
 
           dom.titleH2.textContent = displayName;
-          if (avatarUrl) {
+          if (profileDetails?.avatarUrl) {
             avatarElem.innerHTML = '';
             elem('img', {
               className: 'avatar-image',
-              src: avatarUrl,
+              src: profileDetails.avatarUrl,
               parent: avatarElem,
             });
           }
-          if (bannerUrl) {
-            dom.banner.style.backgroundImage = 'url(' + bannerUrl + ')';
+          if (profileDetails?.bannerUrl) {
+            dom.banner.style.backgroundImage = 'url(' + profileDetails.bannerUrl + ')';
           }
 
-          if (description) {
-            bioElem.textContent = description;
-          }
+          bioElem.textContent = profileDetails?.description || '<empty bio>';
         }
       }
 
       async function startFetchingPosts() {
-        if (!postsByDID) postsByDID = {};
-        const fetcher = postsByDID[shortDID] || (postsByDID[shortDID] = createHistoryFetcher(shortDID));
+        if (!postsByShortDID) postsByShortDID = {};
+        const fetcher = postsByShortDID[shortDID] || (postsByShortDID[shortDID] = createHistoryFetcher(shortDID));
 
         fetcher.fetchMore();
         initSearchUserExperience(fetcher);
@@ -1108,9 +1184,10 @@ function receipts() {
 
           for (let i = 0; i < searchResult.length; i++) {
             const { post, rank, textHighlights, textLightHighlights } = searchResult[i];
-            if (!post.dom || post.textHighlights !== textHighlights) {
+            if (!post.dom || post.textHighlights !== textHighlights || post.textLightHighlights !== textLightHighlights) {
               post.dom = renderPost(post, textHighlights, textLightHighlights);
               post.textHighlights = textHighlights;
+              post.textLightHighlights = textLightHighlights;
             }
 
             if (postList.children[i] === post.dom) continue;
@@ -1143,7 +1220,7 @@ function receipts() {
             postList.appendChild(elem('div', {
               className: 'post-list-continue',
               textContent:
-                searchResult.length + ' matches' + (searchResult.length === 1 ? '' : 's') +
+                searchResult.length + ' match' + (searchResult.length === 1 ? '' : 'es') +
                 ' (searching amongst ' + postCache.length + ' post' + (postCache.length === 1 ? '' : 's') + '...)',
               onclick: () => {
                 fetcher.fetchMore().then(() => {
@@ -1205,12 +1282,13 @@ function receipts() {
             if (typeof rank !== 'number' || rank > 0.4) continue;
             const post = entry.item.post;
 
+            /** @type {string[] | undefined} */
             let textHighlights;
             let textLightHighlights;
             if (entry.matches?.length) {
               for (const match of entry.matches) {
                 if (match.key === 'text') {
-                  if (!textHighlights) {
+                  if (!textLightHighlights) {
                     textHighlights = [...entry.item.text].map(ch => ' ');
                     textLightHighlights = textHighlights.slice();
                   }
@@ -1223,7 +1301,7 @@ function receipts() {
 
                     for (let i = start; i <= end; i++) {
                       textLightHighlights[i] = entry.item.text[i];
-                      if (strongHighlight) textHighlights[i] = textLightHighlights[i];
+                      if (strongHighlight) /** @type {string[]} */(textHighlights)[i] = textLightHighlights[i];
                     }
                   }
                 }
@@ -1283,6 +1361,24 @@ function receipts() {
         return result;
       }
 
+      function renderPostTime(time) {
+        if (!time) return undefined;
+        const dt = new Date(time);
+        const dtTime = dt.getTime();
+        const now = Date.now();
+        if (now - dtTime < 1000 * 60) return elem('span', { title: dt.toLocaleString(),
+          textContent: overrideLang === 'ua' ? 'зараз' : 'now' });
+        else if (now - dtTime < 1000 * 60 * 60) return elem('span', { title: dt.toLocaleString(),
+          textContent: Math.round((now - dtTime) / (1000 * 60)) +
+            (overrideLang === 'ua' ? 'хв тому' : 'm ago') });
+        else if (now - dtTime < 1000 * 60 * 60 * 24) return elem('span', { title: dt.toLocaleString(),
+          textContent: Math.round((now - dtTime) / (1000 * 60 * 60)) +
+            (overrideLang === 'ua' ? 'г тому' : 'h ago') });
+        else if (now - dtTime < 1000 * 60 * 60 * 24 * 7) return elem('span', { title: dt.toLocaleString(),
+          textContent: dt.toLocaleDateString() });
+        else return dt.toLocaleString();
+      }
+
       /**
        * @param {PostRecord} post
        * @param {string | undefined} textHighlights
@@ -1291,60 +1387,161 @@ function receipts() {
       function renderPost(post, textHighlights, textLightHighlights) {
         const postUri = breakFeedUri(/** @type {string} */(post.uri));
 
-        const postElem = elem('div', {
-          className: 'post',
-          children: [
-            elem('div', {
-              className: 'post-content',
-              children: [
-                elem('div', {
-                  className: 'post-content-line-timestamp',
-                  children: [
-                    elem('a', {
-                      href: postUri && 'https://bsky.app/profile/' + unwrapShortHandle(shortHandle) + '/post/' + postUri.postID,
-                      textContent: new Date(post.createdAt).toLocaleString()
-                    })
-                  ]
-                }),
-                elem('div', {
-                  className: 'post-content-line',
-                  children: [
-                    elem('span', {
-                      className: 'post-content-line-text',
-                      children: renderTextWithHighlight(
-                        post.text,
-                        !textHighlights && !textLightHighlights ? undefined :
-                        (pos =>
-                          textHighlights?.charCodeAt(pos) !== 32 ? 'post-content-line-text-highlight' :
-                            textLightHighlights?.charCodeAt(pos) !== 32 ? 'post-content-line-text-light-highlight' :
-                              undefined)
-                          )
-                    })
-                  ]
-                }),
-                /** @type {*} */(post.embed?.images)?.length && elem('div', {
-                  className: 'post-content-line',
-                  children: /** @type {*} */(post.embed?.images).map(img => elem('div', {
-                    className: 'post-content-line-image-entry',
-                    children: [
-                      img.alt && elem('div', {
-                        className: 'post-content-line-image-alt',
-                        textContent: img.alt
-                      }),
-                      elem('img', {
-                        className: 'post-content-line-image',
-                        src: 'https://bsky.social/xrpc/com.atproto.sync.getBlob?did=' +
-                          unwrapShortDID(shortDID) + '&cid=' + img.image.ref,
-                      })
-                    ]
-                  }))
-                })
-              ]
-            })
-          ]
-        });
+        /** @type {HTMLElement} */
+        let expandThreadAboveElement = /** @type {*} */(undefined);
+
+        const postElem = renderPostCore(post, post.reply);
+
+        if (expandThreadAboveElement) {
+          expandThreadAboveElement.onclick = toggleThreadAbove;
+        }
 
         return postElem;
+
+        var togglePromise;
+
+        function toggleThreadAbove() {
+          if (togglePromise) return togglePromise;
+
+          expandThreadAboveElement.className += ' expanded';
+          expandThreadAboveElement.onclick = null;
+          let parentCount = 0;
+          expandThreadAboveElement.textContent = 
+            overrideLang === 'ua' ? 'попередні&hellip;⤵' : 'previous&hellip;⤵'
+
+          togglePromise = (async () => {
+            let prevElem = expandThreadAboveElement;
+            let parent = post.reply?.parent;
+            while (parent) {
+              const uriEntity = breakFeedUri(parent.uri);
+              if (!uriEntity) return;
+
+              const atClient = new atproto_api.BskyAgent({ service: 'https://bsky.social/xrpc' });
+              const postRecord = await atClient.com.atproto.repo.getRecord({
+                repo: unwrapShortDID(uriEntity.shortDID),
+                collection: 'app.bsky.feed.post',
+                rkey: uriEntity.postID
+              });
+
+              /** @type {import ('./lib/node_modules/@atproto/api').AppBskyFeedPost.Record} */
+              const parentPost = /** @type {*} */(postRecord.data.value);
+
+              if (!parentPost) return;
+              const parentPostElem = renderPostCore(parentPost, undefined, uriEntity.shortDID);
+              parentPostElem.className += ' injected-parent';
+              expandThreadAboveElement.parentElement?.insertBefore(
+                parentPostElem,
+                prevElem);
+              
+              parentCount++;
+
+              expandThreadAboveElement.textContent =
+                overrideLang === 'ua' ? parentCount + ' ' + ((parentCount % 10) === 1 ? 'попередній' : 'попередніх') + '⤵' :
+                  parentCount + ' previous⤵';
+
+              parent = parentPost.reply?.parent;
+              prevElem = parentPostElem;
+            }
+          })().finally(() => {
+            togglePromise = undefined;
+          });
+        }
+
+        /**
+         * @param {import ('./lib/node_modules/@atproto/api').AppBskyFeedPost.Record} post
+         * @param {unknown=} withReply
+         * @param {string=} postShortDID
+         */
+        function renderPostCore(post, withReply, postShortDID) {
+          /** @type {HTMLElement | undefined} */
+          let loadAvatarElem;
+
+          /** @type {HTMLElement | undefined} */
+          let handleElem;
+
+          const postElem = elem('div', {
+            className: 'post',
+            children: [
+              elem('div', {
+                className: 'post-content',
+                children: [
+                  withReply && (
+                    expandThreadAboveElement = elem('div', {
+                      className: 'post-content-expand-thread-above',
+                      innerHTML: overrideLang === 'ua' ? '⤵тред&hellip;' : '⤵thread&hellip;'
+                    })
+                  ),
+                  elem('div', {
+                    className: 'post-content-line-timestamp' + (withReply ? ' asreply' : ''),
+                    children: [
+                      postShortDID && (loadAvatarElem = elem('span', {
+                        className: 'post-content-line-avatar'
+                      })),
+                      postShortDID && (handleElem = elem('span', { className: 'post-content-line-handle' })),
+                      elem('a', {
+                        href: postUri && 'https://bsky.app/profile/' + unwrapShortHandle(shortHandle) + '/post/' + postUri.postID,
+                        children: renderPostTime(post.createdAt)
+                      })
+                    ]
+                  }),
+                  elem('div', {
+                    className: 'post-content-line' + (withReply ? ' asreply' : ''),
+                    children: [
+                      elem('span', {
+                        className: 'post-content-line-text',
+                        children: renderTextWithHighlight(
+                          post.text,
+                          !textHighlights && !textLightHighlights ? undefined :
+                            (pos =>
+                              textHighlights?.charCodeAt(pos) !== 32 ? 'post-content-line-text-highlight' :
+                                textLightHighlights?.charCodeAt(pos) !== 32 ? 'post-content-line-text-light-highlight' :
+                                  undefined)
+                        )
+                      })
+                    ]
+                  }),
+                /** @type {*} */(post.embed?.images)?.length && elem('div', {
+                  className: 'post-content-line' + (withReply ? ' asreply' : ''),
+                    children: /** @type {*} */(post.embed?.images).map(img => elem('div', {
+                      className: 'post-content-line-image-entry',
+                      children: [
+                        img.alt && elem('div', {
+                          className: 'post-content-line-image-alt',
+                          textContent: img.alt
+                        }),
+                        elem('img', {
+                          className: 'post-content-line-image',
+                          src: 'https://bsky.social/xrpc/com.atproto.sync.getBlob?did=' +
+                            unwrapShortDID(postShortDID || shortDID) + '&cid=' + img.image.ref,
+                        })
+                      ]
+                    }))
+                  })
+                ]
+              })
+            ]
+          });
+
+          if (loadAvatarElem) {
+            (async () => {
+              const profileDetails = await getProfileDetailsByShortDID(postShortDID);
+              if (profileDetails?.avatarUrl) {
+                loadAvatarElem.className += ' loaded';
+                loadAvatarElem.appendChild(elem('img', {
+                  src: profileDetails.avatarUrl
+                }));
+              }
+
+              if (handleElem && (profileDetails?.displayName || profileDetails?.shortHandle)) {
+                handleElem.textContent =
+                  profileDetails.displayName ? profileDetails.displayName :
+                    '@' + profileDetails.shortHandle;
+              }
+            })()
+          }
+
+          return postElem;
+        }
       }
 
       await initialLoad();
@@ -1352,11 +1549,55 @@ function receipts() {
       await startFetchingPosts();
     }
 
+    function getProfileDetailsByShortDID(shortDID) {
+      if (!profileDetailsByShortDID) profileDetailsByShortDID = {};
+      if (profileDetailsByShortDID[shortDID]) return profileDetailsByShortDID[shortDID];
+
+      return profileDetailsByShortDID[shortDID] = (async () => {
+        const atClient = new atproto_api.BskyAgent({ service: 'https://bsky.social/xrpc' });
+        const describePromise = atClient.com.atproto.repo.describeRepo({
+          repo: unwrapShortDID(shortDID)
+        });
+
+        const profilePromise = atClient.com.atproto.repo.listRecords({
+          collection: 'app.bsky.actor.profile',
+          repo: unwrapShortDID(shortDID)
+        });
+
+        const [describe, profile] = await Promise.all([describePromise, profilePromise]);
+
+        const shortHandle = shortenHandle(describe.data.handle);
+
+        /** @type {*} */
+        const profileRec = profile.data.records?.filter(rec => rec.value)[0]?.value;
+        const avatarCid = profileRec?.avatar?.ref?.toString();
+        const avatarUrl = avatarCid && 'https://bsky.social/xrpc/com.atproto.sync.getBlob?did=' + unwrapShortDID(shortDID) + '&cid=' + avatarCid;
+        const bannerCid = profileRec?.banner?.ref?.toString();
+        const bannerUrl = bannerCid && 'https://bsky.social/xrpc/com.atproto.sync.getBlob?did=' + unwrapShortDID(shortDID) + '&cid=' + bannerCid;
+        const displayName = profileRec?.displayName;
+        const description = profileRec?.description;
+
+        const profileDetails = {
+          shortDID,
+          shortHandle,
+          avatarUrl,
+          bannerUrl,
+          displayName,
+          description
+        };
+
+        profileDetailsByShortDID[shortDID] = profileDetails;
+
+        return profileDetails;
+      })();
+    }
+
     /**
      * @typedef {import('./lib/node_modules/@atproto/api').AppBskyFeedPost.Record & {
      *  uri: string,
      *  dom?: HTMLElement,
-     *  textHighlights?: string
+     *  textHighlights?: string,
+     *  textLightHighlights?: string
      * }} PostRecord
      */
 
