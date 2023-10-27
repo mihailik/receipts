@@ -200,7 +200,7 @@ function receipts() {
 }
 
 .resultsPane .post-list {
-  padding: 1em;
+  padding: 1em 0.5em 1em 1em;
 }
 
 .resultsPane .post-list .post {
@@ -223,7 +223,15 @@ function receipts() {
 }
 
 .resultsPane .post-list .post .post-content-line-text .post-content-line-text-highlight {
-  background: #d4edff;
+  background: gold;
+  border-radius: 0.3em;
+  padding: 0 0.1em;
+  margin: 0 -0.1em;
+}
+
+.resultsPane .post-list .post .post-content-line-text .post-content-line-text-light-highlight {
+  background-image: linear-gradient(to top, #ffcd70, transparent 0.6em);
+  border-radius: 0.2em;
 }
 
 .resultsPane .post-list .post .post-content-line-image {
@@ -1098,9 +1106,9 @@ function receipts() {
           lastRenderedPostCacheCount = postCache.length;
 
           for (let i = 0; i < searchResult.length; i++) {
-            const { post, rank, textHighlights } = searchResult[i];
+            const { post, rank, textHighlights, textLightHighlights } = searchResult[i];
             if (!post.dom || post.textHighlights !== textHighlights) {
-              post.dom = renderPost(post, textHighlights);
+              post.dom = renderPost(post, textHighlights, textLightHighlights);
               post.textHighlights = textHighlights;
             }
 
@@ -1155,7 +1163,7 @@ function receipts() {
          * @param {PostRecord[]} posts
          */
         function findMatchingPosts(searchText, posts) {
-          if (!(searchText || '').trim()) return posts.map(post => ({ post, rank: 0, textHighlights: undefined }));
+          if (!(searchText || '').trim()) return posts.map(post => ({ post, rank: 0, textHighlights: undefined, textLightHighlights: undefined }));
 
           const postEntries = posts.map(post => {
             const text = post.text;
@@ -1172,17 +1180,19 @@ function receipts() {
             return { text, alt, post };
           });
 
-          const searchWords = searchText.split(/\s+/).filter(w => w.length);
-          const smallestWord = searchWords.reduce((smallest, w) => Math.min(smallest, w.length), 3);
+          const searchTextLowercase = searchText.toLowerCase().trim();
+          const searchWordsLowercase = searchTextLowercase.split(/\s+/).filter(w => w.length);
+          const smallestWordLength = searchWordsLowercase.reduce((smallest, w) => Math.min(smallest, w.length), 3);
 
           const Fuse = fuse.default || /** @type {*} */(fuse).Fuse || fuse
           const fuseSearcher = new Fuse(postEntries, {
             keys: ['text', 'alt'],
             ignoreLocation: true,
 
+            fieldNormWeight: 0.1,
             includeScore: true,
             includeMatches: true,
-            minMatchCharLength: smallestWord,
+            minMatchCharLength: smallestWordLength,
             findAllMatches: true,
             shouldSort: false
           });
@@ -1195,20 +1205,36 @@ function receipts() {
             const post = entry.item.post;
 
             let textHighlights;
+            let textLightHighlights;
             if (entry.matches?.length) {
               for (const match of entry.matches) {
                 if (match.key === 'text') {
-                  if (!textHighlights) textHighlights = [...entry.item.text].map(ch => ' ');
+                  if (!textHighlights) {
+                    textHighlights = [...entry.item.text].map(ch => ' ');
+                    textLightHighlights = textHighlights.slice();
+                  }
+
                   for (const [start,end] of match.indices) {
+                    const highlightChunk = entry.item.text.slice(start, end + 1).trim();
+                    const strongHighlight =
+                      highlightChunk.toLowerCase().indexOf(searchTextLowercase) >= 0 ||
+                      searchWordsLowercase.indexOf(highlightChunk.toLowerCase()) >= 0;
+
                     for (let i = start; i <= end; i++) {
-                      textHighlights[i] = entry.item.text[i];
+                      textLightHighlights[i] = entry.item.text[i];
+                      if (strongHighlight) textHighlights[i] = textLightHighlights[i];
                     }
                   }
                 }
               }
             }
 
-            matches.push({ rank, post, textHighlights: textHighlights && textHighlights.join('') });
+            matches.push({
+              rank,
+              post,
+              textHighlights: textHighlights && textHighlights.join(''),
+              textLightHighlights: textLightHighlights && textLightHighlights.join('')
+            });
           }
 
           console.log('matches: ', matches, ' searchEntries: ', searchEntries);
@@ -1219,38 +1245,38 @@ function receipts() {
 
       /**
        * @param {string} text
-       * @param {string | undefined} textHighlights
-       * @param {string} highlightClassName
+       * @param {((index: number) => string | false | null | undefined) | undefined} classAt
        */
-      function renderTextWithHighlight(text, textHighlights, highlightClassName) {
-        if (!textHighlights || !text) return [text];
+      function renderTextWithHighlight(text, classAt) {
+        if (!text || !classAt) return [text];
 
         const result = [];
+        /** @type {string | undefined} */
+        let clusterClass;
         let clusterStart = 0;
-        for (let i = 1; i < textHighlights.length; i++) {
-          const ch = textHighlights[i];
-          if (ch === ' ') {
-            if (textHighlights[i - 1] === ' ') continue;
-            result.push(elem('span', {
-              className: highlightClassName,
-              textContent: text.slice(clusterStart, i)
-            }));
-            clusterStart = i;
-          } else {
-            if (textHighlights[i - 1] !== ' ') continue;
-            result.push(text.slice(clusterStart, i));
-            clusterStart = i;
-          }
+        for (let i = 1; i < text.length; i++) {
+          const className = classAt(i);
+          if (!i || className === clusterClass) continue;
+
+          result.push(
+            !clusterClass ?
+              text.slice(clusterStart, i) :
+              elem('span', {
+                className: clusterClass,
+                textContent: text.slice(clusterStart, i)
+              }));
+          clusterStart = i;
+          clusterClass = className || undefined;
         }
 
         if (clusterStart < text.length) {
-          if (textHighlights[clusterStart] === ' ')
-            result.push(text.slice(clusterStart));
-          else
-            result.push(elem('span', {
-              className: highlightClassName,
-              textContent: text.slice(clusterStart)
-            }));
+          result.push(
+            !clusterClass ?
+              text.slice(clusterStart) :
+              elem('span', {
+                className: clusterClass,
+                textContent: text.slice(clusterStart)
+              }));
         }
 
         return result;
@@ -1258,8 +1284,10 @@ function receipts() {
 
       /**
        * @param {PostRecord} post
+       * @param {string | undefined} textHighlights
+       * @param {string | undefined} textLightHighlights
        */
-      function renderPost(post, textHighlights) {
+      function renderPost(post, textHighlights, textLightHighlights) {
         const postUri = breakFeedUri(/** @type {string} */(post.uri));
 
         const postElem = elem('div', {
@@ -1282,7 +1310,14 @@ function receipts() {
                   children: [
                     elem('span', {
                       className: 'post-content-line-text',
-                      children: renderTextWithHighlight(post.text, textHighlights, 'post-content-line-text-highlight')
+                      children: renderTextWithHighlight(
+                        post.text,
+                        !textHighlights && !textLightHighlights ? undefined :
+                        (pos =>
+                          textHighlights?.charCodeAt(pos) !== 32 ? 'post-content-line-text-highlight' :
+                            textLightHighlights?.charCodeAt(pos) !== 32 ? 'post-content-line-text-light-highlight' :
+                              undefined)
+                          )
                     })
                   ]
                 }),
