@@ -185,7 +185,6 @@ function receipts() {
   margin: 0;
   padding: 1em 1em 0.5em 1em;
   font-size: 90%;
-  max-height: 9em;
   overflow-y: auto;
 }
 
@@ -418,6 +417,10 @@ function receipts() {
   .statsPane {
     grid-row: 4;
     grid-column: 1;
+  }
+
+  .statsPane .bio {
+    max-height: 9em;
   }
 
   .resultsPane {
