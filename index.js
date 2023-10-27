@@ -898,15 +898,17 @@ function receipts() {
     var postsByShortDID;
 
     /**
-     * @type {{ [shortDID: string]: {
+     * @typedef {{
      *  shortDID: string;
      *  shortHandle: string;
      *  avatarUrl: string;
      *  bannerUrl: string;
      *  displayName: string;
      *  description: string;
-     * }}}
+     * }} ProfileDetailsEntry
      */
+
+    /** @type {{ [shortDID: string]: ProfileDetailsEntry | Promise<ProfileDetailsEntry> }} */
     var profileDetailsByShortDID;
 
     async function displaySearchResultsFor(shortDID, shortHandle, displayName, searchString) {
@@ -1188,7 +1190,7 @@ function receipts() {
           for (let i = 0; i < searchResult.length; i++) {
             const { post, rank, textHighlights, textLightHighlights } = searchResult[i];
             if (!post.dom || post.textHighlights !== textHighlights || post.textLightHighlights !== textLightHighlights) {
-              post.dom = renderPost(post, textHighlights, textLightHighlights);
+              post.dom = renderPost({ post, textHighlights, textLightHighlights });
               post.textHighlights = textHighlights;
               post.textLightHighlights = textLightHighlights;
             }
@@ -1383,17 +1385,19 @@ function receipts() {
       }
 
       /**
-       * @param {PostRecord} post
-       * @param {string | undefined} textHighlights
-       * @param {string | undefined} textLightHighlights
+       * @param {{
+       *  post: import ('./lib/node_modules/@atproto/api').AppBskyFeedPost.Record,
+       *  textHighlights?: string,
+       *  textLightHighlights?: string,
+       * }} _
        */
-      function renderPost(post, textHighlights, textLightHighlights) {
+      function renderPost({ post, textHighlights, textLightHighlights }) {
         const postUri = breakFeedUri(/** @type {string} */(post.uri));
 
         /** @type {HTMLElement} */
         let expandThreadAboveElement = /** @type {*} */(undefined);
 
-        const postElem = renderPostCore(post, post.reply);
+        const postElem = renderPostCore({ post, withReply: post.reply, textHighlights, textLightHighlights });
 
         if (expandThreadAboveElement) {
           expandThreadAboveElement.onclick = toggleThreadAbove;
@@ -1430,7 +1434,11 @@ function receipts() {
               const parentPost = /** @type {*} */(postRecord.data.value);
 
               if (!parentPost) return;
-              const parentPostElem = renderPostCore(parentPost, undefined, uriEntity.shortDID);
+
+              const parentPostElem = renderPostCore({
+                post: parentPost,
+                postShortDID: uriEntity.shortDID,
+              });
               parentPostElem.className += ' injected-parent';
               expandThreadAboveElement.parentElement?.insertBefore(
                 parentPostElem,
@@ -1451,11 +1459,15 @@ function receipts() {
         }
 
         /**
-         * @param {import ('./lib/node_modules/@atproto/api').AppBskyFeedPost.Record} post
-         * @param {unknown=} withReply
-         * @param {string=} postShortDID
+         * @param {{
+         *  post: import ('./lib/node_modules/@atproto/api').AppBskyFeedPost.Record,
+         *  textHighlights?: string,
+         *  textLightHighlights?: string,
+         *  withReply?: unknown
+         *  postShortDID?: string,
+         * }} _
          */
-        function renderPostCore(post, withReply, postShortDID) {
+        function renderPostCore({ post, withReply, postShortDID, textHighlights, textLightHighlights }) {
           /** @type {HTMLElement | undefined} */
           let loadAvatarElem;
 
