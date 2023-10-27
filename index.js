@@ -531,72 +531,70 @@ function receipts() {
       });
     }
 
-    /**
-     * @param {TagName} tagName
-     * @param {(
-     *  Omit<
-     *    Partial<HTMLElement['style']> &
-     *     Partial<HTMLElementTagNameMap[TagName]
-     *  >, 'children' | 'parent' | 'parentElement' | 'style'> &
-     *  {
-     *    children?: (Element | string | null | void | undefined)[] | Element | string | null | void | undefined,
-     *    parent?: Element | null, 
-     *    parentElement?: Element | null,
-     *    style?: string | Partial<HTMLElement['style']>
-     *  })=} [style]
-     * @returns {HTMLElementTagNameMap[TagName]}
-     * @template {string} TagName
-     */
-    function elem(tagName, style) {
-      const el = document.createElement(tagName);
+  /**
+   * @param {TagName} tagName
+   * @param {(
+   *  Omit<Partial<HTMLElement['style']> & Partial<HTMLElementTagNameMap[TagName]>, 'children' | 'parent' | 'parentElement' | 'style'> &
+   *  {
+   *    children?: (Element | string | null | void | undefined)[] | Element | string | null | void | undefined,
+   *    parent?: Element | null, 
+   *    parentElement?: Element | null,
+   *    style?: string | Partial<HTMLElement['style']>
+   *  })=} [style]
+   * @returns {HTMLElementTagNameMap[TagName]}
+   * @template {string} TagName
+   */
+  function elem(tagName, style) {
+    var el = document.createElement(tagName);
 
-      if (style && typeof /** @type {*} */(style).appendChild === 'function') {
-        const tmp = parent;
-        style = /** @type {*} */(parent);
-        parent = tmp;
-      }
-
-      if (typeof style === 'string') {
-        if (/** @type{*} */(style).indexOf(':') >= 0) el.style.cssText = style;
-        else el.className = style;
-      }
-      else if (style) {
-        /** @type {Element | undefined} */
-        let setParent;
-        /** @type {Element[] | undefined} */
-        let appendChildren;
-        for (const key in style) {
-          if (key === 'parent' || key === 'parentElement') {
-            setParent = /** @type {*} */(style[key]);
-            continue;
-          }
-          else if (key === 'children') {
-            appendChildren = /** @type {*} */(style[key]);
-            continue;
-          }
-          else if (style[key] == null || (typeof style[key] === 'function' && !(key in el))) continue;
-
-          if (key in el) el[key] = style[key];
-          else if (key in el.style) el.style[key] = /** @type {*} */(style[key]);
-        }
-
-        if (appendChildren) {
-          for (const child of Array.isArray(appendChildren) || /** @type {*} */(appendChildren).length > 0 ? appendChildren : [appendChildren]) {
-            if (child == null) continue;
-            if (typeof child === 'string') {
-              const childText = document.createTextNode(child);
-              el.appendChild(childText);
-            } else {
-              el.appendChild(child);
-            }
-          }
-        }
-
-        if (setParent && typeof setParent.appendChild === 'function') setParent.appendChild(el);
-      }
-
-      return /** @type {*} */(el);
+    if (style && typeof /** @type {*} */(style).appendChild === 'function') {
+      var tmp = parent;
+      style = /** @type {*} */(parent);
+      parent = tmp;
     }
+
+    if (typeof style === 'string') {
+      if (/** @type{*} */(style).indexOf(':') >= 0) el.style.cssText = style;
+      else el.className = style;
+    }
+    else if (style) {
+      /** @type {Element | undefined} */
+      var setParent;
+      /** @type {Element[] | undefined} */
+      var appendChildren;
+      for (var key in style) {
+        if (key === 'parent' || key === 'parentElement') {
+          setParent = /** @type {*} */(style[key]);
+          continue;
+        }
+        else if (key === 'children') {
+          appendChildren = /** @type {*} */(style[key]);
+          continue;
+        }
+        else if (style[key] == null || (typeof style[key] === 'function' && !(key in el))) continue;
+
+        if (key in el) el[key] = style[key];
+        else if (key in el.style) el.style[key] = /** @type {*} */(style[key]);
+      }
+
+      if (appendChildren) {
+        for (const child of Array.isArray(appendChildren) || /** @type {*} */(appendChildren).length > 0 ? appendChildren : [appendChildren]) {
+          if (child == null) continue;
+          if (typeof child === 'string') {
+            const childText = document.createTextNode(child);
+            el.appendChild(childText);
+          } else {
+            el.appendChild(child);
+          }
+        }
+      }
+
+      if (setParent && typeof setParent.appendChild === 'function') setParent.appendChild(el);
+    }
+
+    return /** @type {*} */(el);
+  }
+
 
     function getInputSelectedItem(searchINPUT) {
       if (!searchINPUT.autocompleteDIV) return;
