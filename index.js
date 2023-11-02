@@ -1280,6 +1280,7 @@ function receipts() {
           const fuseSearcher = new Fuse(postEntries, {
             keys: ['text', 'alt'],
             ignoreLocation: true,
+            threshold: 0.2,
 
             fieldNormWeight: 0.1,
             includeScore: true,
