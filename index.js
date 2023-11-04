@@ -1636,45 +1636,69 @@ function receipts() {
       await startFetchingPosts();
     }
 
+    /** @type {Set} */
+    var throttleProfileOutstandingRequests;
+
     function getProfileDetailsByShortDID(shortDID) {
       if (!profileDetailsByShortDID) profileDetailsByShortDID = {};
       if (profileDetailsByShortDID[shortDID]) return profileDetailsByShortDID[shortDID];
 
+      if (!throttleProfileOutstandingRequests) throttleProfileOutstandingRequests = new Set();
+
       return profileDetailsByShortDID[shortDID] = (async () => {
-        if (!atClient) atClient = new atproto_api.BskyAgent({ service: 'https://bsky.social/xrpc' });
+        const MAX_PROFILE_CONCURRENCY = 3;
+        let anyWait = false;
+        while (throttleProfileOutstandingRequests.size >= MAX_PROFILE_CONCURRENCY) {
+          anyWait = true;
+          try {
+            await Promise.race(Array.from(throttleProfileOutstandingRequests));
+          } catch (_err) { }
+        }
 
-        const describePromise = atClient.com.atproto.repo.describeRepo({
-          repo: unwrapShortDID(shortDID)
+        if (anyWait) await new Promise(resolve => setTimeout(resolve, 100));
+
+        const retrievePromise = (async () => {
+
+          const describePromise = atClient.com.atproto.repo.describeRepo({
+            repo: unwrapShortDID(shortDID)
+          });
+
+          const profilePromise = atClient.com.atproto.repo.listRecords({
+            collection: 'app.bsky.actor.profile',
+            repo: unwrapShortDID(shortDID)
+          });
+
+          const [describe, profile] = await Promise.all([describePromise, profilePromise]);
+
+          const shortHandle = shortenHandle(describe.data.handle);
+
+          /** @type {*} */
+          const profileRec = profile.data.records?.filter(rec => rec.value)[0]?.value;
+          const avatarUrl = getBlobUrl(shortDID, profileRec?.avatar?.ref?.toString());
+          const bannerUrl = getBlobUrl(shortDID, profileRec?.banner?.ref?.toString());
+          const displayName = profileRec?.displayName;
+          const description = profileRec?.description;
+
+          const profileDetails = {
+            shortDID,
+            shortHandle,
+            avatarUrl,
+            bannerUrl,
+            displayName,
+            description
+          };
+
+          profileDetailsByShortDID[shortDID] = profileDetails;
+
+          return profileDetails;
+        })();
+
+        throttleProfileOutstandingRequests.add(retrievePromise);
+        retrievePromise.finally(() => {
+          throttleProfileOutstandingRequests.delete(retrievePromise);
         });
 
-        const profilePromise = atClient.com.atproto.repo.listRecords({
-          collection: 'app.bsky.actor.profile',
-          repo: unwrapShortDID(shortDID)
-        });
-
-        const [describe, profile] = await Promise.all([describePromise, profilePromise]);
-
-        const shortHandle = shortenHandle(describe.data.handle);
-
-        /** @type {*} */
-        const profileRec = profile.data.records?.filter(rec => rec.value)[0]?.value;
-        const avatarUrl = getBlobUrl(shortDID, profileRec?.avatar?.ref?.toString());
-        const bannerUrl = getBlobUrl(shortDID, profileRec?.banner?.ref?.toString());
-        const displayName = profileRec?.displayName;
-        const description = profileRec?.description;
-
-        const profileDetails = {
-          shortDID,
-          shortHandle,
-          avatarUrl,
-          bannerUrl,
-          displayName,
-          description
-        };
-
-        profileDetailsByShortDID[shortDID] = profileDetails;
-
-        return profileDetails;
+        return await retrievePromise;
       })();
     }
 
