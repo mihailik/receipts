@@ -1596,10 +1596,8 @@ function receipts() {
 
         /** @type {*} */
         const profileRec = profile.data.records?.filter(rec => rec.value)[0]?.value;
-        const avatarCid = profileRec?.avatar?.ref?.toString();
-        const avatarUrl = avatarCid && 'https://bsky.social/xrpc/com.atproto.sync.getBlob?did=' + unwrapShortDID(shortDID) + '&cid=' + avatarCid;
-        const bannerCid = profileRec?.banner?.ref?.toString();
-        const bannerUrl = bannerCid && 'https://bsky.social/xrpc/com.atproto.sync.getBlob?did=' + unwrapShortDID(shortDID) + '&cid=' + bannerCid;
+        const avatarUrl = getBlobUrl(shortDID, profileRec?.avatar?.ref?.toString());
+        const bannerUrl = getBlobUrl(shortDID, profileRec?.banner?.ref?.toString());
         const displayName = profileRec?.displayName;
         const description = profileRec?.description;
 
@@ -2040,6 +2038,16 @@ function receipts() {
     return handle && handle.replace(_shortenHandle_Regex, '');
   }
   const _shortenHandle_Regex = /\.bsky\.social$/;
+
+  /**
+   * @param {string | null | undefined} did
+   * @param {string | null | undefined} cid
+   */
+  function getBlobUrl(did, cid) {
+    // see also bannerCid && 'https://bsky.social/xrpc/com.atproto.sync.getBlob?did=' + unwrapShortDID(did) + '&cid=' + bannerCid;
+    if (!did || !cid) return undefined;
+    return `https://cdn.bsky.app/img/avatar/plain/${unwrapShortDID(did)}/${cid}@jpeg`;
+  }
 
   /**
  * @param {string=} uri
