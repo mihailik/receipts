@@ -3,6 +3,7 @@
 
 function receipts() {
   function runInBrowser() {
+    var atClient;
 
     let overrideLang =
       /ua/i.test(location.host || '') || /ua/i.test(window.name || '') ||
@@ -50,6 +51,14 @@ function receipts() {
   display: grid;
   grid-template-rows: 1fr auto auto auto 1fr;
   grid-template-columns: 1fr 1fr;
+}
+
+@media (max-width: 800px) {
+  #receiptsHost {
+    position: relative;
+    min-height: 100%;
+    overflow: inherit;
+  }
 }
 
 .titlePane {
@@ -101,14 +110,19 @@ function receipts() {
 }
 
 .searchPane .autocomplete .autocomplete-item {
-  padding: 0.1em 0.5em 0.2em 0.5em;
+  padding: 0.1em 0.5em 0.2em .20em;
   cursor: default;
 }
 
 .searchPane .autocomplete .autocomplete-item .autocomplete-item-at {
   opacity: 0.7;
   font-weight: 300;
-  padding-right: 0.12em;
+  margin-right: 0.12em;
+  display: inline-block;
+  width: 1.3em;
+  text-align: right;
+  position: relative;
+  top: 0.1em;
 }
 
 .searchPane .autocomplete .autocomplete-item .bsky-social {
@@ -146,6 +160,10 @@ function receipts() {
 
 .statsPane {
   grid-row: 4;
+  background: white;
+
+  position: sticky;
+  top: 0;
 }
 
 .statsPane .title {
@@ -200,6 +218,12 @@ function receipts() {
 
   border-left: solid 1px #d4d4d4;
   box-shadow: inset 3px 0px 8px #00000021;
+}
+
+@media (max-width: 800px) {
+  .resultsPane {
+    overflow: visible;
+  }
 }
 
 .resultsPane .post-list {
@@ -314,7 +338,7 @@ function receipts() {
 }
 
 .resultsPane .post-list .post .post-content-line-image {
-  max-width: 100%;
+  max-width: 20em;
   display: block;
   clear: both;
 }
@@ -352,6 +376,12 @@ function receipts() {
   display: grid;
   grid-template-rows: 1fr;
   grid-template-columns: 1fr;
+}
+
+@media (max-width: 800px) {
+  .resultsPane .search-panel {
+    top: 6em;
+  }
 }
 
 .resultsPane .search-panel .post-search-input {
@@ -407,7 +437,6 @@ function receipts() {
   .titlePane {
     grid-row: 2;
     grid-column: 1;
-    overflow: auto;
   }
 
   .searchPane {
@@ -659,7 +688,6 @@ function receipts() {
             navToShortDID = dom.searchINPUT.value;
           } else {
             const acceptSelectionInputValue = dom.searchINPUT.value;
-            const atClient = new atproto_api.BskyAgent({ service: 'https://bsky.social/xrpc' });
             let resolved;
             try {
               resolved = await atClient.com.atproto.identity.resolveHandle({ handle: unwrapShortHandle(acceptSelectionInputValue) });
@@ -729,12 +757,16 @@ function receipts() {
       const selectedShortDID = getInputSelectedItem(dom.searchINPUT);
 
       dom.searchINPUT.autocompleteDIV.innerHTML = '';
+      let matchCount = 0;
       for (const match of searchMatches) {
+        if (matchCount > 30) break;
+        matchCount++;
+
+        let autcompleteItemAt;
         const matchElem = elem('div', {
           className: 'autocomplete-item',
-          parent: dom.searchINPUT.autocompleteDIV,
           children: [
-            elem('span', { className: 'autocomplete-item-at', textContent: '@' }),
+            autcompleteItemAt = elem('span', { className: 'autocomplete-item-at', textContent: '@' }),
             elem('span', { className: 'autocomplete-item-handle', textContent: match.shortHandle }),
             match.shortHandle === unwrapShortHandle(match.shortHandle) ? undefined :
               elem('span', { className: 'bsky-social', textContent: '.bsky.social' }),
@@ -742,6 +774,7 @@ function receipts() {
               elem('span', { className: 'autocomplete-item-displayName', textContent: match.displayName }),
           ]
         });
+
         for (const key in match) if (!(key in matchElem)) {
           matchElem[key] = match[key];
         }
@@ -751,6 +784,36 @@ function receipts() {
         matchElem.onclick = () => {
           navigateToSearchAccount(match.shortDID, match.shortHandle, match.displayName);
         };
+
+        const profileDetailsOrPromise = getProfileDetailsByShortDID(match.shortDID);
+        if (isPromise(profileDetailsOrPromise)) {
+          profileDetailsOrPromise.then(profileDetails => replaceAtWithAvatar(autcompleteItemAt, profileDetails));
+        } else {
+          replaceAtWithAvatar(autcompleteItemAt, profileDetailsOrPromise);
+        }
+
+        dom.searchINPUT.autocompleteDIV.appendChild(matchElem);
+      }
+
+      /**
+       * @param {HTMLElement} autocompleteItemAt
+       * @param {Partial<ProfileDetailsEntry>} profileDetails
+       */
+      function replaceAtWithAvatar(autocompleteItemAt, profileDetails) {
+        let ultimateParent = autocompleteItemAt;
+        while (!/body/i.test(ultimateParent.tagName)) {
+          if (!ultimateParent.parentElement) return;
+          ultimateParent = ultimateParent.parentElement;
+        }
+
+        if (!profileDetails.avatarUrl) return;
+
+        autocompleteItemAt.style.background = 'no-repeat center center';
+        autocompleteItemAt.style.backgroundSize = 'cover';
+        autocompleteItemAt.style.backgroundImage = 'url(' + profileDetails.avatarUrl + ')';
+        autocompleteItemAt.style.color = 'transparent';
+        autocompleteItemAt.style.opacity = '1';
+        autocompleteItemAt.style.borderRadius = '200%';
       }
     }
 
@@ -828,7 +891,6 @@ function receipts() {
 
         return directDIDMatches[shortDID] = (async () => {
           await waitForLibrariesLoaded;
-          const atClient = new atproto_api.BskyAgent({ service: 'https://bsky.social/xrpc' });
           const describePromise = atClient.com.atproto.repo.describeRepo({
             repo: unwrapShortDID(shortDID)
           });
@@ -964,7 +1026,6 @@ function receipts() {
             }
           }
 
-          const atClient = new atproto_api.BskyAgent({ service: 'https://bsky.social/xrpc' });
           try {
             const resolved = await atClient.com.atproto.identity.resolveHandle({ handle: unwrapShortHandle(shortHandle) });
             if (resolved.data.did) {
@@ -1433,7 +1494,6 @@ function receipts() {
               const uriEntity = breakFeedUri(parent.uri);
               if (!uriEntity) return;
 
-              const atClient = new atproto_api.BskyAgent({ service: 'https://bsky.social/xrpc' });
               const postRecord = await atClient.com.atproto.repo.getRecord({
                 repo: unwrapShortDID(uriEntity.shortDID),
                 collection: 'app.bsky.feed.post',
@@ -1580,7 +1640,8 @@ function receipts() {
       if (profileDetailsByShortDID[shortDID]) return profileDetailsByShortDID[shortDID];
 
       return profileDetailsByShortDID[shortDID] = (async () => {
-        const atClient = new atproto_api.BskyAgent({ service: 'https://bsky.social/xrpc' });
+        if (!atClient) atClient = new atproto_api.BskyAgent({ service: 'https://bsky.social/xrpc' });
+
         const describePromise = atClient.com.atproto.repo.describeRepo({
           repo: unwrapShortDID(shortDID)
         });
@@ -1626,8 +1687,6 @@ function receipts() {
      */
 
     function createHistoryFetcher(shortDID) {
-      const atClient = new atproto_api.BskyAgent({ service: 'https://bsky.social/xrpc' });
-
       let fetchMorePromise;
 
       const postsSeen = {};
@@ -1730,6 +1789,7 @@ function receipts() {
     const waitForLibrariesLoaded = new Promise((resolve) => {
       // @ts-ignore
       receipts = () => {
+        atClient = new atproto_api.BskyAgent({ service: 'https://bsky.social/xrpc' });
         resolve(undefined);
       }
     });
@@ -2059,6 +2119,15 @@ function receipts() {
     return { shortDID: match[2], postID: match[3] };
   }
   const _breakFeedUri_Regex = /^at\:\/\/(did:plc:)?([a-z0-9]+)\/[a-z\.]+\/?(.*)?$/;
+
+  /**
+ * @param {any} x
+ * @returns {x is Promise<any>}
+ */
+  function isPromise(x) {
+    if (!x || typeof x !== 'object') return false;
+    else return typeof x.then === 'function';
+  }
 
   /** @param {string} path */
   function jsonpFuncName(path) {
