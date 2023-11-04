@@ -790,7 +790,7 @@ function receipts() {
         if (isPromise(profileDetailsOrPromise)) {
           profileDetailsOrPromise.then(profileDetails => replaceAtWithAvatar(autcompleteItemAt, profileDetails));
         } else {
-          replaceAtWithAvatar(autcompleteItemAt, profileDetailsOrPromise);
+          replaceAtWithAvatar(autcompleteItemAt, profileDetailsOrPromise, true);
         }
 
         dom.searchINPUT.autocompleteDIV.appendChild(matchElem);
@@ -799,15 +799,18 @@ function receipts() {
       /**
        * @param {HTMLElement} autocompleteItemAt
        * @param {Partial<ProfileDetailsEntry>} profileDetails
+       * @param {boolean=} skipDeletionCheck
        */
-      function replaceAtWithAvatar(autocompleteItemAt, profileDetails) {
-        let ultimateParent = autocompleteItemAt;
-        while (!/body/i.test(ultimateParent.tagName)) {
-          if (!ultimateParent.parentElement) return;
-          ultimateParent = ultimateParent.parentElement;
-        }
-
+      function replaceAtWithAvatar(autocompleteItemAt, profileDetails, skipDeletionCheck) {
         if (!profileDetails.avatarUrl) return;
+
+        if (!skipDeletionCheck) {
+          let ultimateParent = autocompleteItemAt;
+          while (!/body/i.test(ultimateParent.tagName)) {
+            if (!ultimateParent.parentElement) return;
+            ultimateParent = ultimateParent.parentElement;
+          }
+        }
 
         autocompleteItemAt.style.background = 'no-repeat center center';
         autocompleteItemAt.style.backgroundSize = 'cover';
