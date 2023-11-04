@@ -757,9 +757,10 @@ function receipts() {
       const selectedShortDID = getInputSelectedItem(dom.searchINPUT);
 
       dom.searchINPUT.autocompleteDIV.innerHTML = '';
+      const MAX_MATCH_COUNT = 100;
       let matchCount = 0;
       for (const match of searchMatches) {
-        if (matchCount > 30) break;
+        if (matchCount > MAX_MATCH_COUNT) break;
         matchCount++;
 
         let autcompleteItemAt;
