@@ -8970,6 +8970,7 @@
 		  ComAtprotoAdminDisableAccountInvites: () => disableAccountInvites_exports,
 		  ComAtprotoAdminDisableInviteCodes: () => disableInviteCodes_exports,
 		  ComAtprotoAdminEnableAccountInvites: () => enableAccountInvites_exports,
+		  ComAtprotoAdminGetAccountInfo: () => getAccountInfo_exports,
 		  ComAtprotoAdminGetInviteCodes: () => getInviteCodes_exports,
 		  ComAtprotoAdminGetModerationAction: () => getModerationAction_exports,
 		  ComAtprotoAdminGetModerationActions: () => getModerationActions_exports,
@@ -8977,6 +8978,7 @@
 		  ComAtprotoAdminGetModerationReports: () => getModerationReports_exports,
 		  ComAtprotoAdminGetRecord: () => getRecord_exports,
 		  ComAtprotoAdminGetRepo: () => getRepo_exports,
+		  ComAtprotoAdminGetSubjectStatus: () => getSubjectStatus_exports,
 		  ComAtprotoAdminResolveModerationReports: () => resolveModerationReports_exports,
 		  ComAtprotoAdminReverseModerationAction: () => reverseModerationAction_exports,
 		  ComAtprotoAdminSearchRepos: () => searchRepos_exports,
@@ -8984,6 +8986,7 @@
 		  ComAtprotoAdminTakeModerationAction: () => takeModerationAction_exports,
 		  ComAtprotoAdminUpdateAccountEmail: () => updateAccountEmail_exports,
 		  ComAtprotoAdminUpdateAccountHandle: () => updateAccountHandle_exports,
+		  ComAtprotoAdminUpdateSubjectStatus: () => updateSubjectStatus_exports,
 		  ComAtprotoIdentityResolveHandle: () => resolveHandle_exports,
 		  ComAtprotoIdentityUpdateHandle: () => updateHandle_exports,
 		  ComAtprotoLabelDefs: () => defs_exports2,
@@ -9018,6 +9021,7 @@
 		  ComAtprotoServerRequestEmailConfirmation: () => requestEmailConfirmation_exports,
 		  ComAtprotoServerRequestEmailUpdate: () => requestEmailUpdate_exports,
 		  ComAtprotoServerRequestPasswordReset: () => requestPasswordReset_exports,
+		  ComAtprotoServerReserveSigningKey: () => reserveSigningKey_exports,
 		  ComAtprotoServerResetPassword: () => resetPassword_exports,
 		  ComAtprotoServerRevokeAppPassword: () => revokeAppPassword_exports,
 		  ComAtprotoServerUpdateEmail: () => updateEmail_exports,
@@ -14172,6 +14176,77 @@ if (cid) {
 		};
 		var bcp47Regexp = /^((?<grandfathered>(en-GB-oed|i-ami|i-bnn|i-default|i-enochian|i-hak|i-klingon|i-lux|i-mingo|i-navajo|i-pwn|i-tao|i-tay|i-tsu|sgn-BE-FR|sgn-BE-NL|sgn-CH-DE)|(art-lojban|cel-gaulish|no-bok|no-nyn|zh-guoyu|zh-hakka|zh-min|zh-min-nan|zh-xiang))|((?<language>([A-Za-z]{2,3}(-(?<extlang>[A-Za-z]{3}(-[A-Za-z]{3}){0,2}))?)|[A-Za-z]{4}|[A-Za-z]{5,8})(-(?<script>[A-Za-z]{4}))?(-(?<region>[A-Za-z]{2}|[0-9]{3}))?(-(?<variant>[A-Za-z0-9]{5,8}|[0-9][A-Za-z0-9]{3}))*(-(?<extension>[0-9A-WY-Za-wy-z](-[A-Za-z0-9]{2,8})+))*(-(?<privateUseA>x(-[A-Za-z0-9]{1,8})+))?)|(?<privateUseB>x(-[A-Za-z0-9]{1,8})+))$/;
 
+		// ../common-web/src/did-doc.ts
+		var isValidDidDoc = (doc) => {
+		  return didDocument.safeParse(doc).success;
+		};
+		var getDid = (doc) => {
+		  const id = doc.id;
+		  if (typeof id !== "string") {
+		    throw new Error("No `id` on document");
+		  }
+		  return id;
+		};
+		var getPdsEndpoint = (doc) => {
+		  return getServiceEndpoint(doc, {
+		    id: "#atproto_pds",
+		    type: "AtprotoPersonalDataServer"
+		  });
+		};
+		var getServiceEndpoint = (doc, opts) => {
+		  const did2 = getDid(doc);
+		  let services = doc.service;
+		  if (!services)
+		    return void 0;
+		  if (typeof services !== "object")
+		    return void 0;
+		  if (!Array.isArray(services)) {
+		    services = [services];
+		  }
+		  const found = services.find((service2) => service2.id === opts.id || service2.id === `${did2}${opts.id}`);
+		  if (!found)
+		    return void 0;
+		  if (found.type !== opts.type) {
+		    return void 0;
+		  }
+		  if (typeof found.serviceEndpoint !== "string") {
+		    return void 0;
+		  }
+		  return validateUrl(found.serviceEndpoint);
+		};
+		var validateUrl = (urlStr) => {
+		  let url;
+		  try {
+		    url = new URL(urlStr);
+		  } catch {
+		    return void 0;
+		  }
+		  if (!["http:", "https:"].includes(url.protocol)) {
+		    return void 0;
+		  } else if (!url.hostname) {
+		    return void 0;
+		  } else {
+		    return urlStr;
+		  }
+		};
+		var verificationMethod = z.object({
+		  id: z.string(),
+		  type: z.string(),
+		  controller: z.string(),
+		  publicKeyMultibase: z.string().optional()
+		});
+		var service = z.object({
+		  id: z.string(),
+		  type: z.string(),
+		  serviceEndpoint: z.union([z.string(), z.record(z.unknown())])
+		});
+		var didDocument = z.object({
+		  id: z.string(),
+		  alsoKnownAs: z.array(z.string()).optional(),
+		  verificationMethod: z.array(verificationMethod).optional(),
+		  service: z.array(service).optional()
+		});
+
 		// ../lexicon/src/validators/formats.ts
 		var import_iso_datestring_validator = __toESM(require_dist());
 		function datetime(path, value) {
@@ -14988,7 +15063,7 @@ if (cid) {
 		    fatal: true
 		  };
 		});
-		var lexiconDoc = z.object({
+		z.object({
 		  lexicon: z.literal(1),
 		  id: z.string().refine((v) => NSID.isValid(v), {
 		    message: "Must be a valid NSID"
@@ -15017,15 +15092,6 @@ if (cid) {
 		function isDiscriminatedObject(value) {
 		  return discriminatedObject.safeParse(value).success;
 		}
-		var LexiconDocMalformedError = class extends Error {
-		  constructor(message, schemaDef, issues) {
-		    super(message);
-		    this.schemaDef = schemaDef;
-		    this.issues = issues;
-		    this.schemaDef = schemaDef;
-		    this.issues = issues;
-		  }
-		};
 		var ValidationError = class extends Error {
 		};
 		var InvalidLexiconError = class extends Error {
@@ -15106,23 +15172,13 @@ if (cid) {
 		    }
 		  }
 		  add(doc) {
-		    try {
-		      lexiconDoc.parse(doc);
-		    } catch (e) {
-		      if (e instanceof ZodError) {
-		        throw new LexiconDocMalformedError(`Failed to parse schema definition ${doc.id}`, doc, e.issues);
-		      } else {
-		        throw e;
-		      }
-		    }
-		    const validatedDoc = doc;
-		    const uri2 = toLexUri(validatedDoc.id);
+		    const uri2 = toLexUri(doc.id);
 		    if (this.docs.has(uri2)) {
 		      throw new Error(`${uri2} has already been registered`);
 		    }
-		    resolveRefUris(validatedDoc, uri2);
-		    this.docs.set(uri2, validatedDoc);
-		    for (const [defUri, def2] of iterDefs(validatedDoc)) {
+		    resolveRefUris(doc, uri2);
+		    this.docs.set(uri2, doc);
+		    for (const [defUri, def2] of iterDefs(doc)) {
 		      this.defs.set(defUri, def2);
 		    }
 		  }
@@ -15605,6 +15661,18 @@ if (cid) {
 		    lexicon: 1,
 		    id: "com.atproto.admin.defs",
 		    defs: {
+		      statusAttr: {
+		        type: "object",
+		        required: ["applied"],
+		        properties: {
+		          applied: {
+		            type: "boolean"
+		          },
+		          ref: {
+		            type: "string"
+		          }
+		        }
+		      },
 		      actionView: {
 		        type: "object",
 		        required: [
@@ -16014,6 +16082,44 @@ if (cid) {
 		          }
 		        }
 		      },
+		      accountView: {
+		        type: "object",
+		        required: ["did", "handle", "indexedAt"],
+		        properties: {
+		          did: {
+		            type: "string",
+		            format: "did"
+		          },
+		          handle: {
+		            type: "string",
+		            format: "handle"
+		          },
+		          email: {
+		            type: "string"
+		          },
+		          indexedAt: {
+		            type: "string",
+		            format: "datetime"
+		          },
+		          invitedBy: {
+		            type: "ref",
+		            ref: "lex:com.atproto.server.defs#inviteCode"
+		          },
+		          invites: {
+		            type: "array",
+		            items: {
+		              type: "ref",
+		              ref: "lex:com.atproto.server.defs#inviteCode"
+		            }
+		          },
+		          invitesDisabled: {
+		            type: "boolean"
+		          },
+		          inviteNote: {
+		            type: "string"
+		          }
+		        }
+		      },
 		      repoViewNotFound: {
 		        type: "object",
 		        required: ["did"],
@@ -16031,6 +16137,24 @@ if (cid) {
 		          did: {
 		            type: "string",
 		            format: "did"
+		          }
+		        }
+		      },
+		      repoBlobRef: {
+		        type: "object",
+		        required: ["did", "cid"],
+		        properties: {
+		          did: {
+		            type: "string",
+		            format: "did"
+		          },
+		          cid: {
+		            type: "string",
+		            format: "cid"
+		          },
+		          recordUri: {
+		            type: "string",
+		            format: "at-uri"
 		          }
 		        }
 		      },
@@ -16311,6 +16435,33 @@ if (cid) {
 		                description: "Additionally add a note describing why the invites were enabled"
 		              }
 		            }
+		          }
+		        }
+		      }
+		    }
+		  },
+		  ComAtprotoAdminGetAccountInfo: {
+		    lexicon: 1,
+		    id: "com.atproto.admin.getAccountInfo",
+		    defs: {
+		      main: {
+		        type: "query",
+		        description: "View details about an account.",
+		        parameters: {
+		          type: "params",
+		          required: ["did"],
+		          properties: {
+		            did: {
+		              type: "string",
+		              format: "did"
+		            }
+		          }
+		        },
+		        output: {
+		          encoding: "application/json",
+		          schema: {
+		            type: "ref",
+		            ref: "lex:com.atproto.admin.defs#accountView"
 		          }
 		        }
 		      }
@@ -16610,6 +16761,54 @@ if (cid) {
 		      }
 		    }
 		  },
+		  ComAtprotoAdminGetSubjectStatus: {
+		    lexicon: 1,
+		    id: "com.atproto.admin.getSubjectStatus",
+		    defs: {
+		      main: {
+		        type: "query",
+		        description: "Fetch the service-specific the admin status of a subject (account, record, or blob)",
+		        parameters: {
+		          type: "params",
+		          properties: {
+		            did: {
+		              type: "string",
+		              format: "did"
+		            },
+		            uri: {
+		              type: "string",
+		              format: "at-uri"
+		            },
+		            blob: {
+		              type: "string",
+		              format: "cid"
+		            }
+		          }
+		        },
+		        output: {
+		          encoding: "application/json",
+		          schema: {
+		            type: "object",
+		            required: ["subject"],
+		            properties: {
+		              subject: {
+		                type: "union",
+		                refs: [
+		                  "lex:com.atproto.admin.defs#repoRef",
+		                  "lex:com.atproto.repo.strongRef",
+		                  "lex:com.atproto.admin.defs#repoBlobRef"
+		                ]
+		              },
+		              takedown: {
+		                type: "ref",
+		                ref: "lex:com.atproto.admin.defs#statusAttr"
+		              }
+		            }
+		          }
+		        }
+		      }
+		    }
+		  },
 		  ComAtprotoAdminResolveModerationReports: {
 		    lexicon: 1,
 		    id: "com.atproto.admin.resolveModerationReports",
@@ -16700,9 +16899,6 @@ if (cid) {
 		              description: "DEPRECATED: use 'q' instead"
 		            },
 		            q: {
-		              type: "string"
-		            },
-		            invitedBy: {
 		              type: "string"
 		            },
 		            limit: {
@@ -16902,6 +17098,58 @@ if (cid) {
 		              handle: {
 		                type: "string",
 		                format: "handle"
+		              }
+		            }
+		          }
+		        }
+		      }
+		    }
+		  },
+		  ComAtprotoAdminUpdateSubjectStatus: {
+		    lexicon: 1,
+		    id: "com.atproto.admin.updateSubjectStatus",
+		    defs: {
+		      main: {
+		        type: "procedure",
+		        description: "Update the service-specific admin status of a subject (account, record, or blob)",
+		        input: {
+		          encoding: "application/json",
+		          schema: {
+		            type: "object",
+		            required: ["subject"],
+		            properties: {
+		              subject: {
+		                type: "union",
+		                refs: [
+		                  "lex:com.atproto.admin.defs#repoRef",
+		                  "lex:com.atproto.repo.strongRef",
+		                  "lex:com.atproto.admin.defs#repoBlobRef"
+		                ]
+		              },
+		              takedown: {
+		                type: "ref",
+		                ref: "lex:com.atproto.admin.defs#statusAttr"
+		              }
+		            }
+		          }
+		        },
+		        output: {
+		          encoding: "application/json",
+		          schema: {
+		            type: "object",
+		            required: ["subject"],
+		            properties: {
+		              subject: {
+		                type: "union",
+		                refs: [
+		                  "lex:com.atproto.admin.defs#repoRef",
+		                  "lex:com.atproto.repo.strongRef",
+		                  "lex:com.atproto.admin.defs#repoBlobRef"
+		                ]
+		              },
+		              takedown: {
+		                type: "ref",
+		                ref: "lex:com.atproto.admin.defs#statusAttr"
 		              }
 		            }
 		          }
@@ -17206,7 +17454,9 @@ if (cid) {
 		                ref: "lex:com.atproto.moderation.defs#reasonType"
 		              },
 		              reason: {
-		                type: "string"
+		                type: "string",
+		                maxGraphemes: 2e3,
+		                maxLength: 2e4
 		              },
 		              subject: {
 		                type: "union",
@@ -17855,7 +18105,7 @@ if (cid) {
 		          encoding: "application/json",
 		          schema: {
 		            type: "object",
-		            required: ["handle", "email", "password"],
+		            required: ["handle"],
 		            properties: {
 		              email: {
 		                type: "string"
@@ -17876,6 +18126,9 @@ if (cid) {
 		              },
 		              recoveryKey: {
 		                type: "string"
+		              },
+		              plcOp: {
+		                type: "unknown"
 		              }
 		            }
 		          }
@@ -17899,6 +18152,9 @@ if (cid) {
 		              did: {
 		                type: "string",
 		                format: "did"
+		              },
+		              didDoc: {
+		                type: "unknown"
 		              }
 		            }
 		          }
@@ -18123,6 +18379,9 @@ if (cid) {
 		              did: {
 		                type: "string",
 		                format: "did"
+		              },
+		              didDoc: {
+		                type: "unknown"
 		              },
 		              email: {
 		                type: "string"
@@ -18361,6 +18620,9 @@ if (cid) {
 		              },
 		              emailConfirmed: {
 		                type: "boolean"
+		              },
+		              didDoc: {
+		                type: "unknown"
 		              }
 		            }
 		          }
@@ -18438,6 +18700,9 @@ if (cid) {
 		              did: {
 		                type: "string",
 		                format: "did"
+		              },
+		              didDoc: {
+		                type: "unknown"
 		              }
 		            }
 		          }
@@ -18507,6 +18772,41 @@ if (cid) {
 		            properties: {
 		              email: {
 		                type: "string"
+		              }
+		            }
+		          }
+		        }
+		      }
+		    }
+		  },
+		  ComAtprotoServerReserveSigningKey: {
+		    lexicon: 1,
+		    id: "com.atproto.server.reserveSigningKey",
+		    defs: {
+		      main: {
+		        type: "procedure",
+		        description: "Reserve a repo signing key for account creation.",
+		        input: {
+		          encoding: "application/json",
+		          schema: {
+		            type: "object",
+		            properties: {
+		              did: {
+		                type: "string",
+		                description: "The did to reserve a new did:key for"
+		              }
+		            }
+		          }
+		        },
+		        output: {
+		          encoding: "application/json",
+		          schema: {
+		            type: "object",
+		            required: ["signingKey"],
+		            properties: {
+		              signingKey: {
+		                type: "string",
+		                description: "Public signing key in the form of a did:key."
 		              }
 		            }
 		          }
@@ -18931,7 +19231,7 @@ if (cid) {
 		      },
 		      repo: {
 		        type: "object",
-		        required: ["did", "head"],
+		        required: ["did", "head", "rev"],
 		        properties: {
 		          did: {
 		            type: "string",
@@ -18940,6 +19240,9 @@ if (cid) {
 		          head: {
 		            type: "string",
 		            format: "cid"
+		          },
+		          rev: {
+		            type: "string"
 		          }
 		        }
 		      }
@@ -19339,6 +19642,10 @@ if (cid) {
 		          blocking: {
 		            type: "string",
 		            format: "at-uri"
+		          },
+		          blockingByList: {
+		            type: "ref",
+		            ref: "lex:app.bsky.graph.defs#listViewBasic"
 		          },
 		          following: {
 		            type: "string",
@@ -22870,48 +23177,57 @@ if (cid) {
 		  return e;
 		}
 
-		// src/client/types/com/atproto/admin/getInviteCodes.ts
-		var getInviteCodes_exports = {};
-		__export(getInviteCodes_exports, {
+		// src/client/types/com/atproto/admin/getAccountInfo.ts
+		var getAccountInfo_exports = {};
+		__export(getAccountInfo_exports, {
 		  toKnownErr: () => toKnownErr4
 		});
 		function toKnownErr4(e) {
 		  return e;
 		}
 
-		// src/client/types/com/atproto/admin/getModerationAction.ts
-		var getModerationAction_exports = {};
-		__export(getModerationAction_exports, {
+		// src/client/types/com/atproto/admin/getInviteCodes.ts
+		var getInviteCodes_exports = {};
+		__export(getInviteCodes_exports, {
 		  toKnownErr: () => toKnownErr5
 		});
 		function toKnownErr5(e) {
 		  return e;
 		}
 
-		// src/client/types/com/atproto/admin/getModerationActions.ts
-		var getModerationActions_exports = {};
-		__export(getModerationActions_exports, {
+		// src/client/types/com/atproto/admin/getModerationAction.ts
+		var getModerationAction_exports = {};
+		__export(getModerationAction_exports, {
 		  toKnownErr: () => toKnownErr6
 		});
 		function toKnownErr6(e) {
 		  return e;
 		}
 
-		// src/client/types/com/atproto/admin/getModerationReport.ts
-		var getModerationReport_exports = {};
-		__export(getModerationReport_exports, {
+		// src/client/types/com/atproto/admin/getModerationActions.ts
+		var getModerationActions_exports = {};
+		__export(getModerationActions_exports, {
 		  toKnownErr: () => toKnownErr7
 		});
 		function toKnownErr7(e) {
 		  return e;
 		}
 
-		// src/client/types/com/atproto/admin/getModerationReports.ts
-		var getModerationReports_exports = {};
-		__export(getModerationReports_exports, {
+		// src/client/types/com/atproto/admin/getModerationReport.ts
+		var getModerationReport_exports = {};
+		__export(getModerationReport_exports, {
 		  toKnownErr: () => toKnownErr8
 		});
 		function toKnownErr8(e) {
+		  return e;
+		}
+
+		// src/client/types/com/atproto/admin/getModerationReports.ts
+		var getModerationReports_exports = {};
+		__export(getModerationReports_exports, {
+		  toKnownErr: () => toKnownErr9
+		});
+		function toKnownErr9(e) {
 		  return e;
 		}
 
@@ -22919,14 +23235,14 @@ if (cid) {
 		var getRecord_exports = {};
 		__export(getRecord_exports, {
 		  RecordNotFoundError: () => RecordNotFoundError,
-		  toKnownErr: () => toKnownErr9
+		  toKnownErr: () => toKnownErr10
 		});
 		var RecordNotFoundError = class extends XRPCError {
 		  constructor(src2) {
 		    super(src2.status, src2.error, src2.message, src2.headers);
 		  }
 		};
-		function toKnownErr9(e) {
+		function toKnownErr10(e) {
 		  if (e instanceof XRPCError) {
 		    if (e.error === "RecordNotFound")
 		      return new RecordNotFoundError(e);
@@ -22938,14 +23254,14 @@ if (cid) {
 		var getRepo_exports = {};
 		__export(getRepo_exports, {
 		  RepoNotFoundError: () => RepoNotFoundError,
-		  toKnownErr: () => toKnownErr10
+		  toKnownErr: () => toKnownErr11
 		});
 		var RepoNotFoundError = class extends XRPCError {
 		  constructor(src2) {
 		    super(src2.status, src2.error, src2.message, src2.headers);
 		  }
 		};
-		function toKnownErr10(e) {
+		function toKnownErr11(e) {
 		  if (e instanceof XRPCError) {
 		    if (e.error === "RepoNotFound")
 		      return new RepoNotFoundError(e);
@@ -22953,39 +23269,48 @@ if (cid) {
 		  return e;
 		}
 
-		// src/client/types/com/atproto/admin/resolveModerationReports.ts
-		var resolveModerationReports_exports = {};
-		__export(resolveModerationReports_exports, {
-		  toKnownErr: () => toKnownErr11
-		});
-		function toKnownErr11(e) {
-		  return e;
-		}
-
-		// src/client/types/com/atproto/admin/reverseModerationAction.ts
-		var reverseModerationAction_exports = {};
-		__export(reverseModerationAction_exports, {
+		// src/client/types/com/atproto/admin/getSubjectStatus.ts
+		var getSubjectStatus_exports = {};
+		__export(getSubjectStatus_exports, {
 		  toKnownErr: () => toKnownErr12
 		});
 		function toKnownErr12(e) {
 		  return e;
 		}
 
-		// src/client/types/com/atproto/admin/searchRepos.ts
-		var searchRepos_exports = {};
-		__export(searchRepos_exports, {
+		// src/client/types/com/atproto/admin/resolveModerationReports.ts
+		var resolveModerationReports_exports = {};
+		__export(resolveModerationReports_exports, {
 		  toKnownErr: () => toKnownErr13
 		});
 		function toKnownErr13(e) {
 		  return e;
 		}
 
-		// src/client/types/com/atproto/admin/sendEmail.ts
-		var sendEmail_exports = {};
-		__export(sendEmail_exports, {
+		// src/client/types/com/atproto/admin/reverseModerationAction.ts
+		var reverseModerationAction_exports = {};
+		__export(reverseModerationAction_exports, {
 		  toKnownErr: () => toKnownErr14
 		});
 		function toKnownErr14(e) {
+		  return e;
+		}
+
+		// src/client/types/com/atproto/admin/searchRepos.ts
+		var searchRepos_exports = {};
+		__export(searchRepos_exports, {
+		  toKnownErr: () => toKnownErr15
+		});
+		function toKnownErr15(e) {
+		  return e;
+		}
+
+		// src/client/types/com/atproto/admin/sendEmail.ts
+		var sendEmail_exports = {};
+		__export(sendEmail_exports, {
+		  toKnownErr: () => toKnownErr16
+		});
+		function toKnownErr16(e) {
 		  return e;
 		}
 
@@ -22993,14 +23318,14 @@ if (cid) {
 		var takeModerationAction_exports = {};
 		__export(takeModerationAction_exports, {
 		  SubjectHasActionError: () => SubjectHasActionError,
-		  toKnownErr: () => toKnownErr15
+		  toKnownErr: () => toKnownErr17
 		});
 		var SubjectHasActionError = class extends XRPCError {
 		  constructor(src2) {
 		    super(src2.status, src2.error, src2.message, src2.headers);
 		  }
 		};
-		function toKnownErr15(e) {
+		function toKnownErr17(e) {
 		  if (e instanceof XRPCError) {
 		    if (e.error === "SubjectHasAction")
 		      return new SubjectHasActionError(e);
@@ -23011,54 +23336,63 @@ if (cid) {
 		// src/client/types/com/atproto/admin/updateAccountEmail.ts
 		var updateAccountEmail_exports = {};
 		__export(updateAccountEmail_exports, {
-		  toKnownErr: () => toKnownErr16
-		});
-		function toKnownErr16(e) {
-		  return e;
-		}
-
-		// src/client/types/com/atproto/admin/updateAccountHandle.ts
-		var updateAccountHandle_exports = {};
-		__export(updateAccountHandle_exports, {
-		  toKnownErr: () => toKnownErr17
-		});
-		function toKnownErr17(e) {
-		  return e;
-		}
-
-		// src/client/types/com/atproto/identity/resolveHandle.ts
-		var resolveHandle_exports = {};
-		__export(resolveHandle_exports, {
 		  toKnownErr: () => toKnownErr18
 		});
 		function toKnownErr18(e) {
 		  return e;
 		}
 
-		// src/client/types/com/atproto/identity/updateHandle.ts
-		var updateHandle_exports = {};
-		__export(updateHandle_exports, {
+		// src/client/types/com/atproto/admin/updateAccountHandle.ts
+		var updateAccountHandle_exports = {};
+		__export(updateAccountHandle_exports, {
 		  toKnownErr: () => toKnownErr19
 		});
 		function toKnownErr19(e) {
 		  return e;
 		}
 
-		// src/client/types/com/atproto/label/queryLabels.ts
-		var queryLabels_exports = {};
-		__export(queryLabels_exports, {
+		// src/client/types/com/atproto/admin/updateSubjectStatus.ts
+		var updateSubjectStatus_exports = {};
+		__export(updateSubjectStatus_exports, {
 		  toKnownErr: () => toKnownErr20
 		});
 		function toKnownErr20(e) {
 		  return e;
 		}
 
-		// src/client/types/com/atproto/moderation/createReport.ts
-		var createReport_exports = {};
-		__export(createReport_exports, {
+		// src/client/types/com/atproto/identity/resolveHandle.ts
+		var resolveHandle_exports = {};
+		__export(resolveHandle_exports, {
 		  toKnownErr: () => toKnownErr21
 		});
 		function toKnownErr21(e) {
+		  return e;
+		}
+
+		// src/client/types/com/atproto/identity/updateHandle.ts
+		var updateHandle_exports = {};
+		__export(updateHandle_exports, {
+		  toKnownErr: () => toKnownErr22
+		});
+		function toKnownErr22(e) {
+		  return e;
+		}
+
+		// src/client/types/com/atproto/label/queryLabels.ts
+		var queryLabels_exports = {};
+		__export(queryLabels_exports, {
+		  toKnownErr: () => toKnownErr23
+		});
+		function toKnownErr23(e) {
+		  return e;
+		}
+
+		// src/client/types/com/atproto/moderation/createReport.ts
+		var createReport_exports = {};
+		__export(createReport_exports, {
+		  toKnownErr: () => toKnownErr24
+		});
+		function toKnownErr24(e) {
 		  return e;
 		}
 
@@ -23069,7 +23403,7 @@ if (cid) {
 		  isCreate: () => isCreate,
 		  isDelete: () => isDelete,
 		  isUpdate: () => isUpdate,
-		  toKnownErr: () => toKnownErr22,
+		  toKnownErr: () => toKnownErr25,
 		  validateCreate: () => validateCreate,
 		  validateDelete: () => validateDelete,
 		  validateUpdate: () => validateUpdate
@@ -23089,7 +23423,7 @@ if (cid) {
 		    super(src2.status, src2.error, src2.message, src2.headers);
 		  }
 		};
-		function toKnownErr22(e) {
+		function toKnownErr25(e) {
 		  if (e instanceof XRPCError) {
 		    if (e.error === "InvalidSwap")
 		      return new InvalidSwapError(e);
@@ -23119,14 +23453,14 @@ if (cid) {
 		var createRecord_exports = {};
 		__export(createRecord_exports, {
 		  InvalidSwapError: () => InvalidSwapError2,
-		  toKnownErr: () => toKnownErr23
+		  toKnownErr: () => toKnownErr26
 		});
 		var InvalidSwapError2 = class extends XRPCError {
 		  constructor(src2) {
 		    super(src2.status, src2.error, src2.message, src2.headers);
 		  }
 		};
-		function toKnownErr23(e) {
+		function toKnownErr26(e) {
 		  if (e instanceof XRPCError) {
 		    if (e.error === "InvalidSwap")
 		      return new InvalidSwapError2(e);
@@ -23138,14 +23472,14 @@ if (cid) {
 		var deleteRecord_exports = {};
 		__export(deleteRecord_exports, {
 		  InvalidSwapError: () => InvalidSwapError3,
-		  toKnownErr: () => toKnownErr24
+		  toKnownErr: () => toKnownErr27
 		});
 		var InvalidSwapError3 = class extends XRPCError {
 		  constructor(src2) {
 		    super(src2.status, src2.error, src2.message, src2.headers);
 		  }
 		};
-		function toKnownErr24(e) {
+		function toKnownErr27(e) {
 		  if (e instanceof XRPCError) {
 		    if (e.error === "InvalidSwap")
 		      return new InvalidSwapError3(e);
@@ -23156,18 +23490,18 @@ if (cid) {
 		// src/client/types/com/atproto/repo/describeRepo.ts
 		var describeRepo_exports = {};
 		__export(describeRepo_exports, {
-		  toKnownErr: () => toKnownErr25
+		  toKnownErr: () => toKnownErr28
 		});
-		function toKnownErr25(e) {
+		function toKnownErr28(e) {
 		  return e;
 		}
 
 		// src/client/types/com/atproto/repo/getRecord.ts
 		var getRecord_exports2 = {};
 		__export(getRecord_exports2, {
-		  toKnownErr: () => toKnownErr26
+		  toKnownErr: () => toKnownErr29
 		});
-		function toKnownErr26(e) {
+		function toKnownErr29(e) {
 		  return e;
 		}
 
@@ -23175,10 +23509,10 @@ if (cid) {
 		var listRecords_exports = {};
 		__export(listRecords_exports, {
 		  isRecord: () => isRecord,
-		  toKnownErr: () => toKnownErr27,
+		  toKnownErr: () => toKnownErr30,
 		  validateRecord: () => validateRecord
 		});
-		function toKnownErr27(e) {
+		function toKnownErr30(e) {
 		  return e;
 		}
 		function isRecord(v) {
@@ -23192,14 +23526,14 @@ if (cid) {
 		var putRecord_exports = {};
 		__export(putRecord_exports, {
 		  InvalidSwapError: () => InvalidSwapError4,
-		  toKnownErr: () => toKnownErr28
+		  toKnownErr: () => toKnownErr31
 		});
 		var InvalidSwapError4 = class extends XRPCError {
 		  constructor(src2) {
 		    super(src2.status, src2.error, src2.message, src2.headers);
 		  }
 		};
-		function toKnownErr28(e) {
+		function toKnownErr31(e) {
 		  if (e instanceof XRPCError) {
 		    if (e.error === "InvalidSwap")
 		      return new InvalidSwapError4(e);
@@ -23210,9 +23544,9 @@ if (cid) {
 		// src/client/types/com/atproto/repo/uploadBlob.ts
 		var uploadBlob_exports = {};
 		__export(uploadBlob_exports, {
-		  toKnownErr: () => toKnownErr29
+		  toKnownErr: () => toKnownErr32
 		});
-		function toKnownErr29(e) {
+		function toKnownErr32(e) {
 		  return e;
 		}
 
@@ -23223,7 +23557,7 @@ if (cid) {
 		  ExpiredTokenError: () => ExpiredTokenError,
 		  InvalidEmailError: () => InvalidEmailError,
 		  InvalidTokenError: () => InvalidTokenError,
-		  toKnownErr: () => toKnownErr30
+		  toKnownErr: () => toKnownErr33
 		});
 		var AccountNotFoundError = class extends XRPCError {
 		  constructor(src2) {
@@ -23245,7 +23579,7 @@ if (cid) {
 		    super(src2.status, src2.error, src2.message, src2.headers);
 		  }
 		};
-		function toKnownErr30(e) {
+		function toKnownErr33(e) {
 		  if (e instanceof XRPCError) {
 		    if (e.error === "AccountNotFound")
 		      return new AccountNotFoundError(e);
@@ -23269,7 +23603,7 @@ if (cid) {
 		  InvalidPasswordError: () => InvalidPasswordError,
 		  UnresolvableDidError: () => UnresolvableDidError,
 		  UnsupportedDomainError: () => UnsupportedDomainError,
-		  toKnownErr: () => toKnownErr31
+		  toKnownErr: () => toKnownErr34
 		});
 		var InvalidHandleError2 = class extends XRPCError {
 		  constructor(src2) {
@@ -23306,7 +23640,7 @@ if (cid) {
 		    super(src2.status, src2.error, src2.message, src2.headers);
 		  }
 		};
-		function toKnownErr31(e) {
+		function toKnownErr34(e) {
 		  if (e instanceof XRPCError) {
 		    if (e.error === "InvalidHandle")
 		      return new InvalidHandleError2(e);
@@ -23331,7 +23665,7 @@ if (cid) {
 		__export(createAppPassword_exports, {
 		  AccountTakedownError: () => AccountTakedownError,
 		  isAppPassword: () => isAppPassword,
-		  toKnownErr: () => toKnownErr32,
+		  toKnownErr: () => toKnownErr35,
 		  validateAppPassword: () => validateAppPassword
 		});
 		var AccountTakedownError = class extends XRPCError {
@@ -23339,7 +23673,7 @@ if (cid) {
 		    super(src2.status, src2.error, src2.message, src2.headers);
 		  }
 		};
-		function toKnownErr32(e) {
+		function toKnownErr35(e) {
 		  if (e instanceof XRPCError) {
 		    if (e.error === "AccountTakedown")
 		      return new AccountTakedownError(e);
@@ -23356,9 +23690,9 @@ if (cid) {
 		// src/client/types/com/atproto/server/createInviteCode.ts
 		var createInviteCode_exports = {};
 		__export(createInviteCode_exports, {
-		  toKnownErr: () => toKnownErr33
+		  toKnownErr: () => toKnownErr36
 		});
-		function toKnownErr33(e) {
+		function toKnownErr36(e) {
 		  return e;
 		}
 
@@ -23366,10 +23700,10 @@ if (cid) {
 		var createInviteCodes_exports = {};
 		__export(createInviteCodes_exports, {
 		  isAccountCodes: () => isAccountCodes,
-		  toKnownErr: () => toKnownErr34,
+		  toKnownErr: () => toKnownErr37,
 		  validateAccountCodes: () => validateAccountCodes
 		});
-		function toKnownErr34(e) {
+		function toKnownErr37(e) {
 		  return e;
 		}
 		function isAccountCodes(v) {
@@ -23383,14 +23717,14 @@ if (cid) {
 		var createSession_exports = {};
 		__export(createSession_exports, {
 		  AccountTakedownError: () => AccountTakedownError2,
-		  toKnownErr: () => toKnownErr35
+		  toKnownErr: () => toKnownErr38
 		});
 		var AccountTakedownError2 = class extends XRPCError {
 		  constructor(src2) {
 		    super(src2.status, src2.error, src2.message, src2.headers);
 		  }
 		};
-		function toKnownErr35(e) {
+		function toKnownErr38(e) {
 		  if (e instanceof XRPCError) {
 		    if (e.error === "AccountTakedown")
 		      return new AccountTakedownError2(e);
@@ -23403,7 +23737,7 @@ if (cid) {
 		__export(deleteAccount_exports, {
 		  ExpiredTokenError: () => ExpiredTokenError2,
 		  InvalidTokenError: () => InvalidTokenError2,
-		  toKnownErr: () => toKnownErr36
+		  toKnownErr: () => toKnownErr39
 		});
 		var ExpiredTokenError2 = class extends XRPCError {
 		  constructor(src2) {
@@ -23415,7 +23749,7 @@ if (cid) {
 		    super(src2.status, src2.error, src2.message, src2.headers);
 		  }
 		};
-		function toKnownErr36(e) {
+		function toKnownErr39(e) {
 		  if (e instanceof XRPCError) {
 		    if (e.error === "ExpiredToken")
 		      return new ExpiredTokenError2(e);
@@ -23428,9 +23762,9 @@ if (cid) {
 		// src/client/types/com/atproto/server/deleteSession.ts
 		var deleteSession_exports = {};
 		__export(deleteSession_exports, {
-		  toKnownErr: () => toKnownErr37
+		  toKnownErr: () => toKnownErr40
 		});
-		function toKnownErr37(e) {
+		function toKnownErr40(e) {
 		  return e;
 		}
 
@@ -23438,10 +23772,10 @@ if (cid) {
 		var describeServer_exports = {};
 		__export(describeServer_exports, {
 		  isLinks: () => isLinks,
-		  toKnownErr: () => toKnownErr38,
+		  toKnownErr: () => toKnownErr41,
 		  validateLinks: () => validateLinks
 		});
-		function toKnownErr38(e) {
+		function toKnownErr41(e) {
 		  return e;
 		}
 		function isLinks(v) {
@@ -23455,14 +23789,14 @@ if (cid) {
 		var getAccountInviteCodes_exports = {};
 		__export(getAccountInviteCodes_exports, {
 		  DuplicateCreateError: () => DuplicateCreateError,
-		  toKnownErr: () => toKnownErr39
+		  toKnownErr: () => toKnownErr42
 		});
 		var DuplicateCreateError = class extends XRPCError {
 		  constructor(src2) {
 		    super(src2.status, src2.error, src2.message, src2.headers);
 		  }
 		};
-		function toKnownErr39(e) {
+		function toKnownErr42(e) {
 		  if (e instanceof XRPCError) {
 		    if (e.error === "DuplicateCreate")
 		      return new DuplicateCreateError(e);
@@ -23473,9 +23807,9 @@ if (cid) {
 		// src/client/types/com/atproto/server/getSession.ts
 		var getSession_exports = {};
 		__export(getSession_exports, {
-		  toKnownErr: () => toKnownErr40
+		  toKnownErr: () => toKnownErr43
 		});
-		function toKnownErr40(e) {
+		function toKnownErr43(e) {
 		  return e;
 		}
 
@@ -23484,7 +23818,7 @@ if (cid) {
 		__export(listAppPasswords_exports, {
 		  AccountTakedownError: () => AccountTakedownError3,
 		  isAppPassword: () => isAppPassword2,
-		  toKnownErr: () => toKnownErr41,
+		  toKnownErr: () => toKnownErr44,
 		  validateAppPassword: () => validateAppPassword2
 		});
 		var AccountTakedownError3 = class extends XRPCError {
@@ -23492,7 +23826,7 @@ if (cid) {
 		    super(src2.status, src2.error, src2.message, src2.headers);
 		  }
 		};
-		function toKnownErr41(e) {
+		function toKnownErr44(e) {
 		  if (e instanceof XRPCError) {
 		    if (e.error === "AccountTakedown")
 		      return new AccountTakedownError3(e);
@@ -23510,14 +23844,14 @@ if (cid) {
 		var refreshSession_exports = {};
 		__export(refreshSession_exports, {
 		  AccountTakedownError: () => AccountTakedownError4,
-		  toKnownErr: () => toKnownErr42
+		  toKnownErr: () => toKnownErr45
 		});
 		var AccountTakedownError4 = class extends XRPCError {
 		  constructor(src2) {
 		    super(src2.status, src2.error, src2.message, src2.headers);
 		  }
 		};
-		function toKnownErr42(e) {
+		function toKnownErr45(e) {
 		  if (e instanceof XRPCError) {
 		    if (e.error === "AccountTakedown")
 		      return new AccountTakedownError4(e);
@@ -23528,36 +23862,45 @@ if (cid) {
 		// src/client/types/com/atproto/server/requestAccountDelete.ts
 		var requestAccountDelete_exports = {};
 		__export(requestAccountDelete_exports, {
-		  toKnownErr: () => toKnownErr43
+		  toKnownErr: () => toKnownErr46
 		});
-		function toKnownErr43(e) {
+		function toKnownErr46(e) {
 		  return e;
 		}
 
 		// src/client/types/com/atproto/server/requestEmailConfirmation.ts
 		var requestEmailConfirmation_exports = {};
 		__export(requestEmailConfirmation_exports, {
-		  toKnownErr: () => toKnownErr44
+		  toKnownErr: () => toKnownErr47
 		});
-		function toKnownErr44(e) {
+		function toKnownErr47(e) {
 		  return e;
 		}
 
 		// src/client/types/com/atproto/server/requestEmailUpdate.ts
 		var requestEmailUpdate_exports = {};
 		__export(requestEmailUpdate_exports, {
-		  toKnownErr: () => toKnownErr45
+		  toKnownErr: () => toKnownErr48
 		});
-		function toKnownErr45(e) {
+		function toKnownErr48(e) {
 		  return e;
 		}
 
 		// src/client/types/com/atproto/server/requestPasswordReset.ts
 		var requestPasswordReset_exports = {};
 		__export(requestPasswordReset_exports, {
-		  toKnownErr: () => toKnownErr46
+		  toKnownErr: () => toKnownErr49
 		});
-		function toKnownErr46(e) {
+		function toKnownErr49(e) {
+		  return e;
+		}
+
+		// src/client/types/com/atproto/server/reserveSigningKey.ts
+		var reserveSigningKey_exports = {};
+		__export(reserveSigningKey_exports, {
+		  toKnownErr: () => toKnownErr50
+		});
+		function toKnownErr50(e) {
 		  return e;
 		}
 
@@ -23566,7 +23909,7 @@ if (cid) {
 		__export(resetPassword_exports, {
 		  ExpiredTokenError: () => ExpiredTokenError3,
 		  InvalidTokenError: () => InvalidTokenError3,
-		  toKnownErr: () => toKnownErr47
+		  toKnownErr: () => toKnownErr51
 		});
 		var ExpiredTokenError3 = class extends XRPCError {
 		  constructor(src2) {
@@ -23578,7 +23921,7 @@ if (cid) {
 		    super(src2.status, src2.error, src2.message, src2.headers);
 		  }
 		};
-		function toKnownErr47(e) {
+		function toKnownErr51(e) {
 		  if (e instanceof XRPCError) {
 		    if (e.error === "ExpiredToken")
 		      return new ExpiredTokenError3(e);
@@ -23591,9 +23934,9 @@ if (cid) {
 		// src/client/types/com/atproto/server/revokeAppPassword.ts
 		var revokeAppPassword_exports = {};
 		__export(revokeAppPassword_exports, {
-		  toKnownErr: () => toKnownErr48
+		  toKnownErr: () => toKnownErr52
 		});
-		function toKnownErr48(e) {
+		function toKnownErr52(e) {
 		  return e;
 		}
 
@@ -23603,7 +23946,7 @@ if (cid) {
 		  ExpiredTokenError: () => ExpiredTokenError4,
 		  InvalidTokenError: () => InvalidTokenError4,
 		  TokenRequiredError: () => TokenRequiredError,
-		  toKnownErr: () => toKnownErr49
+		  toKnownErr: () => toKnownErr53
 		});
 		var ExpiredTokenError4 = class extends XRPCError {
 		  constructor(src2) {
@@ -23620,7 +23963,7 @@ if (cid) {
 		    super(src2.status, src2.error, src2.message, src2.headers);
 		  }
 		};
-		function toKnownErr49(e) {
+		function toKnownErr53(e) {
 		  if (e instanceof XRPCError) {
 		    if (e.error === "ExpiredToken")
 		      return new ExpiredTokenError4(e);
@@ -23635,27 +23978,27 @@ if (cid) {
 		// src/client/types/com/atproto/sync/getBlob.ts
 		var getBlob_exports = {};
 		__export(getBlob_exports, {
-		  toKnownErr: () => toKnownErr50
+		  toKnownErr: () => toKnownErr54
 		});
-		function toKnownErr50(e) {
+		function toKnownErr54(e) {
 		  return e;
 		}
 
 		// src/client/types/com/atproto/sync/getBlocks.ts
 		var getBlocks_exports = {};
 		__export(getBlocks_exports, {
-		  toKnownErr: () => toKnownErr51
+		  toKnownErr: () => toKnownErr55
 		});
-		function toKnownErr51(e) {
+		function toKnownErr55(e) {
 		  return e;
 		}
 
 		// src/client/types/com/atproto/sync/getCheckout.ts
 		var getCheckout_exports = {};
 		__export(getCheckout_exports, {
-		  toKnownErr: () => toKnownErr52
+		  toKnownErr: () => toKnownErr56
 		});
-		function toKnownErr52(e) {
+		function toKnownErr56(e) {
 		  return e;
 		}
 
@@ -23663,14 +24006,14 @@ if (cid) {
 		var getHead_exports = {};
 		__export(getHead_exports, {
 		  HeadNotFoundError: () => HeadNotFoundError,
-		  toKnownErr: () => toKnownErr53
+		  toKnownErr: () => toKnownErr57
 		});
 		var HeadNotFoundError = class extends XRPCError {
 		  constructor(src2) {
 		    super(src2.status, src2.error, src2.message, src2.headers);
 		  }
 		};
-		function toKnownErr53(e) {
+		function toKnownErr57(e) {
 		  if (e instanceof XRPCError) {
 		    if (e.error === "HeadNotFound")
 		      return new HeadNotFoundError(e);
@@ -23682,14 +24025,14 @@ if (cid) {
 		var getLatestCommit_exports = {};
 		__export(getLatestCommit_exports, {
 		  RepoNotFoundError: () => RepoNotFoundError2,
-		  toKnownErr: () => toKnownErr54
+		  toKnownErr: () => toKnownErr58
 		});
 		var RepoNotFoundError2 = class extends XRPCError {
 		  constructor(src2) {
 		    super(src2.status, src2.error, src2.message, src2.headers);
 		  }
 		};
-		function toKnownErr54(e) {
+		function toKnownErr58(e) {
 		  if (e instanceof XRPCError) {
 		    if (e.error === "RepoNotFound")
 		      return new RepoNotFoundError2(e);
@@ -23700,27 +24043,27 @@ if (cid) {
 		// src/client/types/com/atproto/sync/getRecord.ts
 		var getRecord_exports3 = {};
 		__export(getRecord_exports3, {
-		  toKnownErr: () => toKnownErr55
+		  toKnownErr: () => toKnownErr59
 		});
-		function toKnownErr55(e) {
+		function toKnownErr59(e) {
 		  return e;
 		}
 
 		// src/client/types/com/atproto/sync/getRepo.ts
 		var getRepo_exports2 = {};
 		__export(getRepo_exports2, {
-		  toKnownErr: () => toKnownErr56
+		  toKnownErr: () => toKnownErr60
 		});
-		function toKnownErr56(e) {
+		function toKnownErr60(e) {
 		  return e;
 		}
 
 		// src/client/types/com/atproto/sync/listBlobs.ts
 		var listBlobs_exports = {};
 		__export(listBlobs_exports, {
-		  toKnownErr: () => toKnownErr57
+		  toKnownErr: () => toKnownErr61
 		});
-		function toKnownErr57(e) {
+		function toKnownErr61(e) {
 		  return e;
 		}
 
@@ -23728,10 +24071,10 @@ if (cid) {
 		var listRepos_exports = {};
 		__export(listRepos_exports, {
 		  isRepo: () => isRepo,
-		  toKnownErr: () => toKnownErr58,
+		  toKnownErr: () => toKnownErr62,
 		  validateRepo: () => validateRepo
 		});
-		function toKnownErr58(e) {
+		function toKnownErr62(e) {
 		  return e;
 		}
 		function isRepo(v) {
@@ -23744,81 +24087,81 @@ if (cid) {
 		// src/client/types/com/atproto/sync/notifyOfUpdate.ts
 		var notifyOfUpdate_exports = {};
 		__export(notifyOfUpdate_exports, {
-		  toKnownErr: () => toKnownErr59
-		});
-		function toKnownErr59(e) {
-		  return e;
-		}
-
-		// src/client/types/com/atproto/sync/requestCrawl.ts
-		var requestCrawl_exports = {};
-		__export(requestCrawl_exports, {
-		  toKnownErr: () => toKnownErr60
-		});
-		function toKnownErr60(e) {
-		  return e;
-		}
-
-		// src/client/types/app/bsky/actor/getPreferences.ts
-		var getPreferences_exports = {};
-		__export(getPreferences_exports, {
-		  toKnownErr: () => toKnownErr61
-		});
-		function toKnownErr61(e) {
-		  return e;
-		}
-
-		// src/client/types/app/bsky/actor/getProfile.ts
-		var getProfile_exports = {};
-		__export(getProfile_exports, {
-		  toKnownErr: () => toKnownErr62
-		});
-		function toKnownErr62(e) {
-		  return e;
-		}
-
-		// src/client/types/app/bsky/actor/getProfiles.ts
-		var getProfiles_exports = {};
-		__export(getProfiles_exports, {
 		  toKnownErr: () => toKnownErr63
 		});
 		function toKnownErr63(e) {
 		  return e;
 		}
 
-		// src/client/types/app/bsky/actor/getSuggestions.ts
-		var getSuggestions_exports = {};
-		__export(getSuggestions_exports, {
+		// src/client/types/com/atproto/sync/requestCrawl.ts
+		var requestCrawl_exports = {};
+		__export(requestCrawl_exports, {
 		  toKnownErr: () => toKnownErr64
 		});
 		function toKnownErr64(e) {
 		  return e;
 		}
 
-		// src/client/types/app/bsky/actor/putPreferences.ts
-		var putPreferences_exports = {};
-		__export(putPreferences_exports, {
+		// src/client/types/app/bsky/actor/getPreferences.ts
+		var getPreferences_exports = {};
+		__export(getPreferences_exports, {
 		  toKnownErr: () => toKnownErr65
 		});
 		function toKnownErr65(e) {
 		  return e;
 		}
 
-		// src/client/types/app/bsky/actor/searchActors.ts
-		var searchActors_exports = {};
-		__export(searchActors_exports, {
+		// src/client/types/app/bsky/actor/getProfile.ts
+		var getProfile_exports = {};
+		__export(getProfile_exports, {
 		  toKnownErr: () => toKnownErr66
 		});
 		function toKnownErr66(e) {
 		  return e;
 		}
 
-		// src/client/types/app/bsky/actor/searchActorsTypeahead.ts
-		var searchActorsTypeahead_exports = {};
-		__export(searchActorsTypeahead_exports, {
+		// src/client/types/app/bsky/actor/getProfiles.ts
+		var getProfiles_exports = {};
+		__export(getProfiles_exports, {
 		  toKnownErr: () => toKnownErr67
 		});
 		function toKnownErr67(e) {
+		  return e;
+		}
+
+		// src/client/types/app/bsky/actor/getSuggestions.ts
+		var getSuggestions_exports = {};
+		__export(getSuggestions_exports, {
+		  toKnownErr: () => toKnownErr68
+		});
+		function toKnownErr68(e) {
+		  return e;
+		}
+
+		// src/client/types/app/bsky/actor/putPreferences.ts
+		var putPreferences_exports = {};
+		__export(putPreferences_exports, {
+		  toKnownErr: () => toKnownErr69
+		});
+		function toKnownErr69(e) {
+		  return e;
+		}
+
+		// src/client/types/app/bsky/actor/searchActors.ts
+		var searchActors_exports = {};
+		__export(searchActors_exports, {
+		  toKnownErr: () => toKnownErr70
+		});
+		function toKnownErr70(e) {
+		  return e;
+		}
+
+		// src/client/types/app/bsky/actor/searchActorsTypeahead.ts
+		var searchActorsTypeahead_exports = {};
+		__export(searchActorsTypeahead_exports, {
+		  toKnownErr: () => toKnownErr71
+		});
+		function toKnownErr71(e) {
 		  return e;
 		}
 
@@ -23827,11 +24170,11 @@ if (cid) {
 		__export(describeFeedGenerator_exports, {
 		  isFeed: () => isFeed,
 		  isLinks: () => isLinks2,
-		  toKnownErr: () => toKnownErr68,
+		  toKnownErr: () => toKnownErr72,
 		  validateFeed: () => validateFeed,
 		  validateLinks: () => validateLinks2
 		});
-		function toKnownErr68(e) {
+		function toKnownErr72(e) {
 		  return e;
 		}
 		function isFeed(v) {
@@ -23850,9 +24193,9 @@ if (cid) {
 		// src/client/types/app/bsky/feed/getActorFeeds.ts
 		var getActorFeeds_exports = {};
 		__export(getActorFeeds_exports, {
-		  toKnownErr: () => toKnownErr69
+		  toKnownErr: () => toKnownErr73
 		});
-		function toKnownErr69(e) {
+		function toKnownErr73(e) {
 		  return e;
 		}
 
@@ -23861,7 +24204,7 @@ if (cid) {
 		__export(getActorLikes_exports, {
 		  BlockedActorError: () => BlockedActorError,
 		  BlockedByActorError: () => BlockedByActorError,
-		  toKnownErr: () => toKnownErr70
+		  toKnownErr: () => toKnownErr74
 		});
 		var BlockedActorError = class extends XRPCError {
 		  constructor(src2) {
@@ -23873,7 +24216,7 @@ if (cid) {
 		    super(src2.status, src2.error, src2.message, src2.headers);
 		  }
 		};
-		function toKnownErr70(e) {
+		function toKnownErr74(e) {
 		  if (e instanceof XRPCError) {
 		    if (e.error === "BlockedActor")
 		      return new BlockedActorError(e);
@@ -23888,7 +24231,7 @@ if (cid) {
 		__export(getAuthorFeed_exports, {
 		  BlockedActorError: () => BlockedActorError2,
 		  BlockedByActorError: () => BlockedByActorError2,
-		  toKnownErr: () => toKnownErr71
+		  toKnownErr: () => toKnownErr75
 		});
 		var BlockedActorError2 = class extends XRPCError {
 		  constructor(src2) {
@@ -23900,7 +24243,7 @@ if (cid) {
 		    super(src2.status, src2.error, src2.message, src2.headers);
 		  }
 		};
-		function toKnownErr71(e) {
+		function toKnownErr75(e) {
 		  if (e instanceof XRPCError) {
 		    if (e.error === "BlockedActor")
 		      return new BlockedActorError2(e);
@@ -23914,14 +24257,14 @@ if (cid) {
 		var getFeed_exports = {};
 		__export(getFeed_exports, {
 		  UnknownFeedError: () => UnknownFeedError,
-		  toKnownErr: () => toKnownErr72
+		  toKnownErr: () => toKnownErr76
 		});
 		var UnknownFeedError = class extends XRPCError {
 		  constructor(src2) {
 		    super(src2.status, src2.error, src2.message, src2.headers);
 		  }
 		};
-		function toKnownErr72(e) {
+		function toKnownErr76(e) {
 		  if (e instanceof XRPCError) {
 		    if (e.error === "UnknownFeed")
 		      return new UnknownFeedError(e);
@@ -23932,18 +24275,18 @@ if (cid) {
 		// src/client/types/app/bsky/feed/getFeedGenerator.ts
 		var getFeedGenerator_exports = {};
 		__export(getFeedGenerator_exports, {
-		  toKnownErr: () => toKnownErr73
+		  toKnownErr: () => toKnownErr77
 		});
-		function toKnownErr73(e) {
+		function toKnownErr77(e) {
 		  return e;
 		}
 
 		// src/client/types/app/bsky/feed/getFeedGenerators.ts
 		var getFeedGenerators_exports = {};
 		__export(getFeedGenerators_exports, {
-		  toKnownErr: () => toKnownErr74
+		  toKnownErr: () => toKnownErr78
 		});
-		function toKnownErr74(e) {
+		function toKnownErr78(e) {
 		  return e;
 		}
 
@@ -23951,14 +24294,14 @@ if (cid) {
 		var getFeedSkeleton_exports = {};
 		__export(getFeedSkeleton_exports, {
 		  UnknownFeedError: () => UnknownFeedError2,
-		  toKnownErr: () => toKnownErr75
+		  toKnownErr: () => toKnownErr79
 		});
 		var UnknownFeedError2 = class extends XRPCError {
 		  constructor(src2) {
 		    super(src2.status, src2.error, src2.message, src2.headers);
 		  }
 		};
-		function toKnownErr75(e) {
+		function toKnownErr79(e) {
 		  if (e instanceof XRPCError) {
 		    if (e.error === "UnknownFeed")
 		      return new UnknownFeedError2(e);
@@ -23970,10 +24313,10 @@ if (cid) {
 		var getLikes_exports = {};
 		__export(getLikes_exports, {
 		  isLike: () => isLike,
-		  toKnownErr: () => toKnownErr76,
+		  toKnownErr: () => toKnownErr80,
 		  validateLike: () => validateLike
 		});
-		function toKnownErr76(e) {
+		function toKnownErr80(e) {
 		  return e;
 		}
 		function isLike(v) {
@@ -23987,14 +24330,14 @@ if (cid) {
 		var getListFeed_exports = {};
 		__export(getListFeed_exports, {
 		  UnknownListError: () => UnknownListError,
-		  toKnownErr: () => toKnownErr77
+		  toKnownErr: () => toKnownErr81
 		});
 		var UnknownListError = class extends XRPCError {
 		  constructor(src2) {
 		    super(src2.status, src2.error, src2.message, src2.headers);
 		  }
 		};
-		function toKnownErr77(e) {
+		function toKnownErr81(e) {
 		  if (e instanceof XRPCError) {
 		    if (e.error === "UnknownList")
 		      return new UnknownListError(e);
@@ -24006,14 +24349,14 @@ if (cid) {
 		var getPostThread_exports = {};
 		__export(getPostThread_exports, {
 		  NotFoundError: () => NotFoundError,
-		  toKnownErr: () => toKnownErr78
+		  toKnownErr: () => toKnownErr82
 		});
 		var NotFoundError = class extends XRPCError {
 		  constructor(src2) {
 		    super(src2.status, src2.error, src2.message, src2.headers);
 		  }
 		};
-		function toKnownErr78(e) {
+		function toKnownErr82(e) {
 		  if (e instanceof XRPCError) {
 		    if (e.error === "NotFound")
 		      return new NotFoundError(e);
@@ -24024,36 +24367,36 @@ if (cid) {
 		// src/client/types/app/bsky/feed/getPosts.ts
 		var getPosts_exports = {};
 		__export(getPosts_exports, {
-		  toKnownErr: () => toKnownErr79
+		  toKnownErr: () => toKnownErr83
 		});
-		function toKnownErr79(e) {
+		function toKnownErr83(e) {
 		  return e;
 		}
 
 		// src/client/types/app/bsky/feed/getRepostedBy.ts
 		var getRepostedBy_exports = {};
 		__export(getRepostedBy_exports, {
-		  toKnownErr: () => toKnownErr80
+		  toKnownErr: () => toKnownErr84
 		});
-		function toKnownErr80(e) {
+		function toKnownErr84(e) {
 		  return e;
 		}
 
 		// src/client/types/app/bsky/feed/getSuggestedFeeds.ts
 		var getSuggestedFeeds_exports = {};
 		__export(getSuggestedFeeds_exports, {
-		  toKnownErr: () => toKnownErr81
+		  toKnownErr: () => toKnownErr85
 		});
-		function toKnownErr81(e) {
+		function toKnownErr85(e) {
 		  return e;
 		}
 
 		// src/client/types/app/bsky/feed/getTimeline.ts
 		var getTimeline_exports = {};
 		__export(getTimeline_exports, {
-		  toKnownErr: () => toKnownErr82
+		  toKnownErr: () => toKnownErr86
 		});
-		function toKnownErr82(e) {
+		function toKnownErr86(e) {
 		  return e;
 		}
 
@@ -24061,14 +24404,14 @@ if (cid) {
 		var searchPosts_exports = {};
 		__export(searchPosts_exports, {
 		  BadQueryStringError: () => BadQueryStringError,
-		  toKnownErr: () => toKnownErr83
+		  toKnownErr: () => toKnownErr87
 		});
 		var BadQueryStringError = class extends XRPCError {
 		  constructor(src2) {
 		    super(src2.status, src2.error, src2.message, src2.headers);
 		  }
 		};
-		function toKnownErr83(e) {
+		function toKnownErr87(e) {
 		  if (e instanceof XRPCError) {
 		    if (e.error === "BadQueryString")
 		      return new BadQueryStringError(e);
@@ -24079,126 +24422,126 @@ if (cid) {
 		// src/client/types/app/bsky/graph/getBlocks.ts
 		var getBlocks_exports2 = {};
 		__export(getBlocks_exports2, {
-		  toKnownErr: () => toKnownErr84
-		});
-		function toKnownErr84(e) {
-		  return e;
-		}
-
-		// src/client/types/app/bsky/graph/getFollowers.ts
-		var getFollowers_exports = {};
-		__export(getFollowers_exports, {
-		  toKnownErr: () => toKnownErr85
-		});
-		function toKnownErr85(e) {
-		  return e;
-		}
-
-		// src/client/types/app/bsky/graph/getFollows.ts
-		var getFollows_exports = {};
-		__export(getFollows_exports, {
-		  toKnownErr: () => toKnownErr86
-		});
-		function toKnownErr86(e) {
-		  return e;
-		}
-
-		// src/client/types/app/bsky/graph/getList.ts
-		var getList_exports = {};
-		__export(getList_exports, {
-		  toKnownErr: () => toKnownErr87
-		});
-		function toKnownErr87(e) {
-		  return e;
-		}
-
-		// src/client/types/app/bsky/graph/getListBlocks.ts
-		var getListBlocks_exports = {};
-		__export(getListBlocks_exports, {
 		  toKnownErr: () => toKnownErr88
 		});
 		function toKnownErr88(e) {
 		  return e;
 		}
 
-		// src/client/types/app/bsky/graph/getListMutes.ts
-		var getListMutes_exports = {};
-		__export(getListMutes_exports, {
+		// src/client/types/app/bsky/graph/getFollowers.ts
+		var getFollowers_exports = {};
+		__export(getFollowers_exports, {
 		  toKnownErr: () => toKnownErr89
 		});
 		function toKnownErr89(e) {
 		  return e;
 		}
 
-		// src/client/types/app/bsky/graph/getLists.ts
-		var getLists_exports = {};
-		__export(getLists_exports, {
+		// src/client/types/app/bsky/graph/getFollows.ts
+		var getFollows_exports = {};
+		__export(getFollows_exports, {
 		  toKnownErr: () => toKnownErr90
 		});
 		function toKnownErr90(e) {
 		  return e;
 		}
 
-		// src/client/types/app/bsky/graph/getMutes.ts
-		var getMutes_exports = {};
-		__export(getMutes_exports, {
+		// src/client/types/app/bsky/graph/getList.ts
+		var getList_exports = {};
+		__export(getList_exports, {
 		  toKnownErr: () => toKnownErr91
 		});
 		function toKnownErr91(e) {
 		  return e;
 		}
 
-		// src/client/types/app/bsky/graph/getSuggestedFollowsByActor.ts
-		var getSuggestedFollowsByActor_exports = {};
-		__export(getSuggestedFollowsByActor_exports, {
+		// src/client/types/app/bsky/graph/getListBlocks.ts
+		var getListBlocks_exports = {};
+		__export(getListBlocks_exports, {
 		  toKnownErr: () => toKnownErr92
 		});
 		function toKnownErr92(e) {
 		  return e;
 		}
 
-		// src/client/types/app/bsky/graph/muteActor.ts
-		var muteActor_exports = {};
-		__export(muteActor_exports, {
+		// src/client/types/app/bsky/graph/getListMutes.ts
+		var getListMutes_exports = {};
+		__export(getListMutes_exports, {
 		  toKnownErr: () => toKnownErr93
 		});
 		function toKnownErr93(e) {
 		  return e;
 		}
 
-		// src/client/types/app/bsky/graph/muteActorList.ts
-		var muteActorList_exports = {};
-		__export(muteActorList_exports, {
+		// src/client/types/app/bsky/graph/getLists.ts
+		var getLists_exports = {};
+		__export(getLists_exports, {
 		  toKnownErr: () => toKnownErr94
 		});
 		function toKnownErr94(e) {
 		  return e;
 		}
 
-		// src/client/types/app/bsky/graph/unmuteActor.ts
-		var unmuteActor_exports = {};
-		__export(unmuteActor_exports, {
+		// src/client/types/app/bsky/graph/getMutes.ts
+		var getMutes_exports = {};
+		__export(getMutes_exports, {
 		  toKnownErr: () => toKnownErr95
 		});
 		function toKnownErr95(e) {
 		  return e;
 		}
 
-		// src/client/types/app/bsky/graph/unmuteActorList.ts
-		var unmuteActorList_exports = {};
-		__export(unmuteActorList_exports, {
+		// src/client/types/app/bsky/graph/getSuggestedFollowsByActor.ts
+		var getSuggestedFollowsByActor_exports = {};
+		__export(getSuggestedFollowsByActor_exports, {
 		  toKnownErr: () => toKnownErr96
 		});
 		function toKnownErr96(e) {
 		  return e;
 		}
 
-		// src/client/types/app/bsky/notification/getUnreadCount.ts
-		var getUnreadCount_exports = {};
-		__export(getUnreadCount_exports, {
+		// src/client/types/app/bsky/graph/muteActor.ts
+		var muteActor_exports = {};
+		__export(muteActor_exports, {
 		  toKnownErr: () => toKnownErr97
 		});
 		function toKnownErr97(e) {
+		  return e;
+		}
+
+		// src/client/types/app/bsky/graph/muteActorList.ts
+		var muteActorList_exports = {};
+		__export(muteActorList_exports, {
+		  toKnownErr: () => toKnownErr98
+		});
+		function toKnownErr98(e) {
+		  return e;
+		}
+
+		// src/client/types/app/bsky/graph/unmuteActor.ts
+		var unmuteActor_exports = {};
+		__export(unmuteActor_exports, {
+		  toKnownErr: () => toKnownErr99
+		});
+		function toKnownErr99(e) {
+		  return e;
+		}
+
+		// src/client/types/app/bsky/graph/unmuteActorList.ts
+		var unmuteActorList_exports = {};
+		__export(unmuteActorList_exports, {
+		  toKnownErr: () => toKnownErr100
+		});
+		function toKnownErr100(e) {
+		  return e;
+		}
+
+		// src/client/types/app/bsky/notification/getUnreadCount.ts
+		var getUnreadCount_exports = {};
+		__export(getUnreadCount_exports, {
+		  toKnownErr: () => toKnownErr101
+		});
+		function toKnownErr101(e) {
 		  return e;
 		}
 
@@ -24206,10 +24549,10 @@ if (cid) {
 		var listNotifications_exports = {};
 		__export(listNotifications_exports, {
 		  isNotification: () => isNotification,
-		  toKnownErr: () => toKnownErr98,
+		  toKnownErr: () => toKnownErr102,
 		  validateNotification: () => validateNotification
 		});
-		function toKnownErr98(e) {
+		function toKnownErr102(e) {
 		  return e;
 		}
 		function isNotification(v) {
@@ -24222,36 +24565,36 @@ if (cid) {
 		// src/client/types/app/bsky/notification/registerPush.ts
 		var registerPush_exports = {};
 		__export(registerPush_exports, {
-		  toKnownErr: () => toKnownErr99
+		  toKnownErr: () => toKnownErr103
 		});
-		function toKnownErr99(e) {
+		function toKnownErr103(e) {
 		  return e;
 		}
 
 		// src/client/types/app/bsky/notification/updateSeen.ts
 		var updateSeen_exports = {};
 		__export(updateSeen_exports, {
-		  toKnownErr: () => toKnownErr100
+		  toKnownErr: () => toKnownErr104
 		});
-		function toKnownErr100(e) {
+		function toKnownErr104(e) {
 		  return e;
 		}
 
 		// src/client/types/app/bsky/unspecced/getPopular.ts
 		var getPopular_exports = {};
 		__export(getPopular_exports, {
-		  toKnownErr: () => toKnownErr101
+		  toKnownErr: () => toKnownErr105
 		});
-		function toKnownErr101(e) {
+		function toKnownErr105(e) {
 		  return e;
 		}
 
 		// src/client/types/app/bsky/unspecced/getPopularFeedGenerators.ts
 		var getPopularFeedGenerators_exports = {};
 		__export(getPopularFeedGenerators_exports, {
-		  toKnownErr: () => toKnownErr102
+		  toKnownErr: () => toKnownErr106
 		});
-		function toKnownErr102(e) {
+		function toKnownErr106(e) {
 		  return e;
 		}
 
@@ -24259,14 +24602,14 @@ if (cid) {
 		var getTimelineSkeleton_exports = {};
 		__export(getTimelineSkeleton_exports, {
 		  UnknownFeedError: () => UnknownFeedError3,
-		  toKnownErr: () => toKnownErr103
+		  toKnownErr: () => toKnownErr107
 		});
 		var UnknownFeedError3 = class extends XRPCError {
 		  constructor(src2) {
 		    super(src2.status, src2.error, src2.message, src2.headers);
 		  }
 		};
-		function toKnownErr103(e) {
+		function toKnownErr107(e) {
 		  if (e instanceof XRPCError) {
 		    if (e.error === "UnknownFeed")
 		      return new UnknownFeedError3(e);
@@ -24278,14 +24621,14 @@ if (cid) {
 		var searchActorsSkeleton_exports = {};
 		__export(searchActorsSkeleton_exports, {
 		  BadQueryStringError: () => BadQueryStringError2,
-		  toKnownErr: () => toKnownErr104
+		  toKnownErr: () => toKnownErr108
 		});
 		var BadQueryStringError2 = class extends XRPCError {
 		  constructor(src2) {
 		    super(src2.status, src2.error, src2.message, src2.headers);
 		  }
 		};
-		function toKnownErr104(e) {
+		function toKnownErr108(e) {
 		  if (e instanceof XRPCError) {
 		    if (e.error === "BadQueryString")
 		      return new BadQueryStringError2(e);
@@ -24297,14 +24640,14 @@ if (cid) {
 		var searchPostsSkeleton_exports = {};
 		__export(searchPostsSkeleton_exports, {
 		  BadQueryStringError: () => BadQueryStringError3,
-		  toKnownErr: () => toKnownErr105
+		  toKnownErr: () => toKnownErr109
 		});
 		var BadQueryStringError3 = class extends XRPCError {
 		  constructor(src2) {
 		    super(src2.status, src2.error, src2.message, src2.headers);
 		  }
 		};
-		function toKnownErr105(e) {
+		function toKnownErr109(e) {
 		  if (e instanceof XRPCError) {
 		    if (e.error === "BadQueryString")
 		      return new BadQueryStringError3(e);
@@ -24319,6 +24662,7 @@ if (cid) {
 		  ESCALATE: () => ESCALATE,
 		  FLAG: () => FLAG,
 		  TAKEDOWN: () => TAKEDOWN,
+		  isAccountView: () => isAccountView,
 		  isActionReversal: () => isActionReversal,
 		  isActionView: () => isActionView,
 		  isActionViewCurrent: () => isActionViewCurrent,
@@ -24330,13 +24674,16 @@ if (cid) {
 		  isRecordView: () => isRecordView,
 		  isRecordViewDetail: () => isRecordViewDetail,
 		  isRecordViewNotFound: () => isRecordViewNotFound,
+		  isRepoBlobRef: () => isRepoBlobRef,
 		  isRepoRef: () => isRepoRef,
 		  isRepoView: () => isRepoView,
 		  isRepoViewDetail: () => isRepoViewDetail,
 		  isRepoViewNotFound: () => isRepoViewNotFound,
 		  isReportView: () => isReportView,
 		  isReportViewDetail: () => isReportViewDetail,
+		  isStatusAttr: () => isStatusAttr,
 		  isVideoDetails: () => isVideoDetails,
+		  validateAccountView: () => validateAccountView,
 		  validateActionReversal: () => validateActionReversal,
 		  validateActionView: () => validateActionView,
 		  validateActionViewCurrent: () => validateActionViewCurrent,
@@ -24348,14 +24695,22 @@ if (cid) {
 		  validateRecordView: () => validateRecordView,
 		  validateRecordViewDetail: () => validateRecordViewDetail,
 		  validateRecordViewNotFound: () => validateRecordViewNotFound,
+		  validateRepoBlobRef: () => validateRepoBlobRef,
 		  validateRepoRef: () => validateRepoRef,
 		  validateRepoView: () => validateRepoView,
 		  validateRepoViewDetail: () => validateRepoViewDetail,
 		  validateRepoViewNotFound: () => validateRepoViewNotFound,
 		  validateReportView: () => validateReportView,
 		  validateReportViewDetail: () => validateReportViewDetail,
+		  validateStatusAttr: () => validateStatusAttr,
 		  validateVideoDetails: () => validateVideoDetails
 		});
+		function isStatusAttr(v) {
+		  return isObj2(v) && hasProp2(v, "$type") && v.$type === "com.atproto.admin.defs#statusAttr";
+		}
+		function validateStatusAttr(v) {
+		  return lexicons.validate("com.atproto.admin.defs#statusAttr", v);
+		}
 		function isActionView(v) {
 		  return isObj2(v) && hasProp2(v, "$type") && v.$type === "com.atproto.admin.defs#actionView";
 		}
@@ -24408,6 +24763,12 @@ if (cid) {
 		function validateRepoViewDetail(v) {
 		  return lexicons.validate("com.atproto.admin.defs#repoViewDetail", v);
 		}
+		function isAccountView(v) {
+		  return isObj2(v) && hasProp2(v, "$type") && v.$type === "com.atproto.admin.defs#accountView";
+		}
+		function validateAccountView(v) {
+		  return lexicons.validate("com.atproto.admin.defs#accountView", v);
+		}
 		function isRepoViewNotFound(v) {
 		  return isObj2(v) && hasProp2(v, "$type") && v.$type === "com.atproto.admin.defs#repoViewNotFound";
 		}
@@ -24419,6 +24780,12 @@ if (cid) {
 		}
 		function validateRepoRef(v) {
 		  return lexicons.validate("com.atproto.admin.defs#repoRef", v);
+		}
+		function isRepoBlobRef(v) {
+		  return isObj2(v) && hasProp2(v, "$type") && v.$type === "com.atproto.admin.defs#repoBlobRef";
+		}
+		function validateRepoBlobRef(v) {
+		  return lexicons.validate("com.atproto.admin.defs#repoBlobRef", v);
 		}
 		function isRecordView(v) {
 		  return isObj2(v) && hasProp2(v, "$type") && v.$type === "com.atproto.admin.defs#recordView";
@@ -25319,26 +25686,26 @@ if (cid) {
 		  }
 		};
 		var ComNS = class {
-		  constructor(service) {
-		    this._service = service;
-		    this.atproto = new AtprotoNS(service);
+		  constructor(service2) {
+		    this._service = service2;
+		    this.atproto = new AtprotoNS(service2);
 		  }
 		};
 		var AtprotoNS = class {
-		  constructor(service) {
-		    this._service = service;
-		    this.admin = new AdminNS(service);
-		    this.identity = new IdentityNS(service);
-		    this.label = new LabelNS(service);
-		    this.moderation = new ModerationNS(service);
-		    this.repo = new RepoNS(service);
-		    this.server = new ServerNS(service);
-		    this.sync = new SyncNS(service);
+		  constructor(service2) {
+		    this._service = service2;
+		    this.admin = new AdminNS(service2);
+		    this.identity = new IdentityNS(service2);
+		    this.label = new LabelNS(service2);
+		    this.moderation = new ModerationNS(service2);
+		    this.repo = new RepoNS(service2);
+		    this.server = new ServerNS(service2);
+		    this.sync = new SyncNS(service2);
 		  }
 		};
 		var AdminNS = class {
-		  constructor(service) {
-		    this._service = service;
+		  constructor(service2) {
+		    this._service = service2;
 		  }
 		  disableAccountInvites(data, opts) {
 		    return this._service.xrpc.call("com.atproto.admin.disableAccountInvites", opts?.qp, data, opts).catch((e) => {
@@ -25355,384 +25722,404 @@ if (cid) {
 		      throw toKnownErr3(e);
 		    });
 		  }
+		  getAccountInfo(params2, opts) {
+		    return this._service.xrpc.call("com.atproto.admin.getAccountInfo", params2, void 0, opts).catch((e) => {
+		      throw toKnownErr4(e);
+		    });
+		  }
 		  getInviteCodes(params2, opts) {
 		    return this._service.xrpc.call("com.atproto.admin.getInviteCodes", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr4(e);
+		      throw toKnownErr5(e);
 		    });
 		  }
 		  getModerationAction(params2, opts) {
 		    return this._service.xrpc.call("com.atproto.admin.getModerationAction", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr5(e);
+		      throw toKnownErr6(e);
 		    });
 		  }
 		  getModerationActions(params2, opts) {
 		    return this._service.xrpc.call("com.atproto.admin.getModerationActions", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr6(e);
+		      throw toKnownErr7(e);
 		    });
 		  }
 		  getModerationReport(params2, opts) {
 		    return this._service.xrpc.call("com.atproto.admin.getModerationReport", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr7(e);
+		      throw toKnownErr8(e);
 		    });
 		  }
 		  getModerationReports(params2, opts) {
 		    return this._service.xrpc.call("com.atproto.admin.getModerationReports", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr8(e);
+		      throw toKnownErr9(e);
 		    });
 		  }
 		  getRecord(params2, opts) {
 		    return this._service.xrpc.call("com.atproto.admin.getRecord", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr9(e);
+		      throw toKnownErr10(e);
 		    });
 		  }
 		  getRepo(params2, opts) {
 		    return this._service.xrpc.call("com.atproto.admin.getRepo", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr10(e);
+		      throw toKnownErr11(e);
+		    });
+		  }
+		  getSubjectStatus(params2, opts) {
+		    return this._service.xrpc.call("com.atproto.admin.getSubjectStatus", params2, void 0, opts).catch((e) => {
+		      throw toKnownErr12(e);
 		    });
 		  }
 		  resolveModerationReports(data, opts) {
 		    return this._service.xrpc.call("com.atproto.admin.resolveModerationReports", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr11(e);
+		      throw toKnownErr13(e);
 		    });
 		  }
 		  reverseModerationAction(data, opts) {
 		    return this._service.xrpc.call("com.atproto.admin.reverseModerationAction", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr12(e);
+		      throw toKnownErr14(e);
 		    });
 		  }
 		  searchRepos(params2, opts) {
 		    return this._service.xrpc.call("com.atproto.admin.searchRepos", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr13(e);
+		      throw toKnownErr15(e);
 		    });
 		  }
 		  sendEmail(data, opts) {
 		    return this._service.xrpc.call("com.atproto.admin.sendEmail", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr14(e);
+		      throw toKnownErr16(e);
 		    });
 		  }
 		  takeModerationAction(data, opts) {
 		    return this._service.xrpc.call("com.atproto.admin.takeModerationAction", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr15(e);
+		      throw toKnownErr17(e);
 		    });
 		  }
 		  updateAccountEmail(data, opts) {
 		    return this._service.xrpc.call("com.atproto.admin.updateAccountEmail", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr16(e);
+		      throw toKnownErr18(e);
 		    });
 		  }
 		  updateAccountHandle(data, opts) {
 		    return this._service.xrpc.call("com.atproto.admin.updateAccountHandle", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr17(e);
-		    });
-		  }
-		};
-		var IdentityNS = class {
-		  constructor(service) {
-		    this._service = service;
-		  }
-		  resolveHandle(params2, opts) {
-		    return this._service.xrpc.call("com.atproto.identity.resolveHandle", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr18(e);
-		    });
-		  }
-		  updateHandle(data, opts) {
-		    return this._service.xrpc.call("com.atproto.identity.updateHandle", opts?.qp, data, opts).catch((e) => {
 		      throw toKnownErr19(e);
 		    });
 		  }
-		};
-		var LabelNS = class {
-		  constructor(service) {
-		    this._service = service;
-		  }
-		  queryLabels(params2, opts) {
-		    return this._service.xrpc.call("com.atproto.label.queryLabels", params2, void 0, opts).catch((e) => {
+		  updateSubjectStatus(data, opts) {
+		    return this._service.xrpc.call("com.atproto.admin.updateSubjectStatus", opts?.qp, data, opts).catch((e) => {
 		      throw toKnownErr20(e);
 		    });
 		  }
 		};
+		var IdentityNS = class {
+		  constructor(service2) {
+		    this._service = service2;
+		  }
+		  resolveHandle(params2, opts) {
+		    return this._service.xrpc.call("com.atproto.identity.resolveHandle", params2, void 0, opts).catch((e) => {
+		      throw toKnownErr21(e);
+		    });
+		  }
+		  updateHandle(data, opts) {
+		    return this._service.xrpc.call("com.atproto.identity.updateHandle", opts?.qp, data, opts).catch((e) => {
+		      throw toKnownErr22(e);
+		    });
+		  }
+		};
+		var LabelNS = class {
+		  constructor(service2) {
+		    this._service = service2;
+		  }
+		  queryLabels(params2, opts) {
+		    return this._service.xrpc.call("com.atproto.label.queryLabels", params2, void 0, opts).catch((e) => {
+		      throw toKnownErr23(e);
+		    });
+		  }
+		};
 		var ModerationNS = class {
-		  constructor(service) {
-		    this._service = service;
+		  constructor(service2) {
+		    this._service = service2;
 		  }
 		  createReport(data, opts) {
 		    return this._service.xrpc.call("com.atproto.moderation.createReport", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr21(e);
+		      throw toKnownErr24(e);
 		    });
 		  }
 		};
 		var RepoNS = class {
-		  constructor(service) {
-		    this._service = service;
+		  constructor(service2) {
+		    this._service = service2;
 		  }
 		  applyWrites(data, opts) {
 		    return this._service.xrpc.call("com.atproto.repo.applyWrites", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr22(e);
+		      throw toKnownErr25(e);
 		    });
 		  }
 		  createRecord(data, opts) {
 		    return this._service.xrpc.call("com.atproto.repo.createRecord", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr23(e);
+		      throw toKnownErr26(e);
 		    });
 		  }
 		  deleteRecord(data, opts) {
 		    return this._service.xrpc.call("com.atproto.repo.deleteRecord", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr24(e);
+		      throw toKnownErr27(e);
 		    });
 		  }
 		  describeRepo(params2, opts) {
 		    return this._service.xrpc.call("com.atproto.repo.describeRepo", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr25(e);
+		      throw toKnownErr28(e);
 		    });
 		  }
 		  getRecord(params2, opts) {
 		    return this._service.xrpc.call("com.atproto.repo.getRecord", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr26(e);
+		      throw toKnownErr29(e);
 		    });
 		  }
 		  listRecords(params2, opts) {
 		    return this._service.xrpc.call("com.atproto.repo.listRecords", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr27(e);
+		      throw toKnownErr30(e);
 		    });
 		  }
 		  putRecord(data, opts) {
 		    return this._service.xrpc.call("com.atproto.repo.putRecord", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr28(e);
+		      throw toKnownErr31(e);
 		    });
 		  }
 		  uploadBlob(data, opts) {
 		    return this._service.xrpc.call("com.atproto.repo.uploadBlob", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr29(e);
+		      throw toKnownErr32(e);
 		    });
 		  }
 		};
 		var ServerNS = class {
-		  constructor(service) {
-		    this._service = service;
+		  constructor(service2) {
+		    this._service = service2;
 		  }
 		  confirmEmail(data, opts) {
 		    return this._service.xrpc.call("com.atproto.server.confirmEmail", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr30(e);
+		      throw toKnownErr33(e);
 		    });
 		  }
 		  createAccount(data, opts) {
 		    return this._service.xrpc.call("com.atproto.server.createAccount", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr31(e);
+		      throw toKnownErr34(e);
 		    });
 		  }
 		  createAppPassword(data, opts) {
 		    return this._service.xrpc.call("com.atproto.server.createAppPassword", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr32(e);
+		      throw toKnownErr35(e);
 		    });
 		  }
 		  createInviteCode(data, opts) {
 		    return this._service.xrpc.call("com.atproto.server.createInviteCode", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr33(e);
+		      throw toKnownErr36(e);
 		    });
 		  }
 		  createInviteCodes(data, opts) {
 		    return this._service.xrpc.call("com.atproto.server.createInviteCodes", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr34(e);
+		      throw toKnownErr37(e);
 		    });
 		  }
 		  createSession(data, opts) {
 		    return this._service.xrpc.call("com.atproto.server.createSession", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr35(e);
+		      throw toKnownErr38(e);
 		    });
 		  }
 		  deleteAccount(data, opts) {
 		    return this._service.xrpc.call("com.atproto.server.deleteAccount", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr36(e);
+		      throw toKnownErr39(e);
 		    });
 		  }
 		  deleteSession(data, opts) {
 		    return this._service.xrpc.call("com.atproto.server.deleteSession", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr37(e);
+		      throw toKnownErr40(e);
 		    });
 		  }
 		  describeServer(params2, opts) {
 		    return this._service.xrpc.call("com.atproto.server.describeServer", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr38(e);
+		      throw toKnownErr41(e);
 		    });
 		  }
 		  getAccountInviteCodes(params2, opts) {
 		    return this._service.xrpc.call("com.atproto.server.getAccountInviteCodes", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr39(e);
+		      throw toKnownErr42(e);
 		    });
 		  }
 		  getSession(params2, opts) {
 		    return this._service.xrpc.call("com.atproto.server.getSession", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr40(e);
+		      throw toKnownErr43(e);
 		    });
 		  }
 		  listAppPasswords(params2, opts) {
 		    return this._service.xrpc.call("com.atproto.server.listAppPasswords", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr41(e);
+		      throw toKnownErr44(e);
 		    });
 		  }
 		  refreshSession(data, opts) {
 		    return this._service.xrpc.call("com.atproto.server.refreshSession", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr42(e);
+		      throw toKnownErr45(e);
 		    });
 		  }
 		  requestAccountDelete(data, opts) {
 		    return this._service.xrpc.call("com.atproto.server.requestAccountDelete", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr43(e);
+		      throw toKnownErr46(e);
 		    });
 		  }
 		  requestEmailConfirmation(data, opts) {
 		    return this._service.xrpc.call("com.atproto.server.requestEmailConfirmation", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr44(e);
+		      throw toKnownErr47(e);
 		    });
 		  }
 		  requestEmailUpdate(data, opts) {
 		    return this._service.xrpc.call("com.atproto.server.requestEmailUpdate", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr45(e);
+		      throw toKnownErr48(e);
 		    });
 		  }
 		  requestPasswordReset(data, opts) {
 		    return this._service.xrpc.call("com.atproto.server.requestPasswordReset", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr46(e);
+		      throw toKnownErr49(e);
+		    });
+		  }
+		  reserveSigningKey(data, opts) {
+		    return this._service.xrpc.call("com.atproto.server.reserveSigningKey", opts?.qp, data, opts).catch((e) => {
+		      throw toKnownErr50(e);
 		    });
 		  }
 		  resetPassword(data, opts) {
 		    return this._service.xrpc.call("com.atproto.server.resetPassword", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr47(e);
+		      throw toKnownErr51(e);
 		    });
 		  }
 		  revokeAppPassword(data, opts) {
 		    return this._service.xrpc.call("com.atproto.server.revokeAppPassword", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr48(e);
+		      throw toKnownErr52(e);
 		    });
 		  }
 		  updateEmail(data, opts) {
 		    return this._service.xrpc.call("com.atproto.server.updateEmail", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr49(e);
+		      throw toKnownErr53(e);
 		    });
 		  }
 		};
 		var SyncNS = class {
-		  constructor(service) {
-		    this._service = service;
+		  constructor(service2) {
+		    this._service = service2;
 		  }
 		  getBlob(params2, opts) {
 		    return this._service.xrpc.call("com.atproto.sync.getBlob", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr50(e);
+		      throw toKnownErr54(e);
 		    });
 		  }
 		  getBlocks(params2, opts) {
 		    return this._service.xrpc.call("com.atproto.sync.getBlocks", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr51(e);
+		      throw toKnownErr55(e);
 		    });
 		  }
 		  getCheckout(params2, opts) {
 		    return this._service.xrpc.call("com.atproto.sync.getCheckout", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr52(e);
+		      throw toKnownErr56(e);
 		    });
 		  }
 		  getHead(params2, opts) {
 		    return this._service.xrpc.call("com.atproto.sync.getHead", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr53(e);
+		      throw toKnownErr57(e);
 		    });
 		  }
 		  getLatestCommit(params2, opts) {
 		    return this._service.xrpc.call("com.atproto.sync.getLatestCommit", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr54(e);
+		      throw toKnownErr58(e);
 		    });
 		  }
 		  getRecord(params2, opts) {
 		    return this._service.xrpc.call("com.atproto.sync.getRecord", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr55(e);
+		      throw toKnownErr59(e);
 		    });
 		  }
 		  getRepo(params2, opts) {
 		    return this._service.xrpc.call("com.atproto.sync.getRepo", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr56(e);
+		      throw toKnownErr60(e);
 		    });
 		  }
 		  listBlobs(params2, opts) {
 		    return this._service.xrpc.call("com.atproto.sync.listBlobs", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr57(e);
+		      throw toKnownErr61(e);
 		    });
 		  }
 		  listRepos(params2, opts) {
 		    return this._service.xrpc.call("com.atproto.sync.listRepos", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr58(e);
+		      throw toKnownErr62(e);
 		    });
 		  }
 		  notifyOfUpdate(data, opts) {
 		    return this._service.xrpc.call("com.atproto.sync.notifyOfUpdate", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr59(e);
+		      throw toKnownErr63(e);
 		    });
 		  }
 		  requestCrawl(data, opts) {
 		    return this._service.xrpc.call("com.atproto.sync.requestCrawl", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr60(e);
+		      throw toKnownErr64(e);
 		    });
 		  }
 		};
 		var AppNS = class {
-		  constructor(service) {
-		    this._service = service;
-		    this.bsky = new BskyNS(service);
+		  constructor(service2) {
+		    this._service = service2;
+		    this.bsky = new BskyNS(service2);
 		  }
 		};
 		var BskyNS = class {
-		  constructor(service) {
-		    this._service = service;
-		    this.actor = new ActorNS(service);
-		    this.embed = new EmbedNS(service);
-		    this.feed = new FeedNS(service);
-		    this.graph = new GraphNS(service);
-		    this.notification = new NotificationNS(service);
-		    this.richtext = new RichtextNS(service);
-		    this.unspecced = new UnspeccedNS(service);
+		  constructor(service2) {
+		    this._service = service2;
+		    this.actor = new ActorNS(service2);
+		    this.embed = new EmbedNS(service2);
+		    this.feed = new FeedNS(service2);
+		    this.graph = new GraphNS(service2);
+		    this.notification = new NotificationNS(service2);
+		    this.richtext = new RichtextNS(service2);
+		    this.unspecced = new UnspeccedNS(service2);
 		  }
 		};
 		var ActorNS = class {
-		  constructor(service) {
-		    this._service = service;
-		    this.profile = new ProfileRecord(service);
+		  constructor(service2) {
+		    this._service = service2;
+		    this.profile = new ProfileRecord(service2);
 		  }
 		  getPreferences(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.actor.getPreferences", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr61(e);
+		      throw toKnownErr65(e);
 		    });
 		  }
 		  getProfile(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.actor.getProfile", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr62(e);
+		      throw toKnownErr66(e);
 		    });
 		  }
 		  getProfiles(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.actor.getProfiles", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr63(e);
+		      throw toKnownErr67(e);
 		    });
 		  }
 		  getSuggestions(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.actor.getSuggestions", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr64(e);
+		      throw toKnownErr68(e);
 		    });
 		  }
 		  putPreferences(data, opts) {
 		    return this._service.xrpc.call("app.bsky.actor.putPreferences", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr65(e);
+		      throw toKnownErr69(e);
 		    });
 		  }
 		  searchActors(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.actor.searchActors", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr66(e);
+		      throw toKnownErr70(e);
 		    });
 		  }
 		  searchActorsTypeahead(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.actor.searchActorsTypeahead", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr67(e);
+		      throw toKnownErr71(e);
 		    });
 		  }
 		};
 		var ProfileRecord = class {
-		  constructor(service) {
-		    this._service = service;
+		  constructor(service2) {
+		    this._service = service2;
 		  }
 		  async list(params2) {
 		    const res = await this._service.xrpc.call("com.atproto.repo.listRecords", {
@@ -25758,103 +26145,103 @@ if (cid) {
 		  }
 		};
 		var EmbedNS = class {
-		  constructor(service) {
-		    this._service = service;
+		  constructor(service2) {
+		    this._service = service2;
 		  }
 		};
 		var FeedNS = class {
-		  constructor(service) {
-		    this._service = service;
-		    this.generator = new GeneratorRecord(service);
-		    this.like = new LikeRecord(service);
-		    this.post = new PostRecord(service);
-		    this.repost = new RepostRecord(service);
-		    this.threadgate = new ThreadgateRecord(service);
+		  constructor(service2) {
+		    this._service = service2;
+		    this.generator = new GeneratorRecord(service2);
+		    this.like = new LikeRecord(service2);
+		    this.post = new PostRecord(service2);
+		    this.repost = new RepostRecord(service2);
+		    this.threadgate = new ThreadgateRecord(service2);
 		  }
 		  describeFeedGenerator(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.feed.describeFeedGenerator", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr68(e);
+		      throw toKnownErr72(e);
 		    });
 		  }
 		  getActorFeeds(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.feed.getActorFeeds", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr69(e);
+		      throw toKnownErr73(e);
 		    });
 		  }
 		  getActorLikes(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.feed.getActorLikes", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr70(e);
+		      throw toKnownErr74(e);
 		    });
 		  }
 		  getAuthorFeed(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.feed.getAuthorFeed", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr71(e);
+		      throw toKnownErr75(e);
 		    });
 		  }
 		  getFeed(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.feed.getFeed", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr72(e);
+		      throw toKnownErr76(e);
 		    });
 		  }
 		  getFeedGenerator(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.feed.getFeedGenerator", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr73(e);
+		      throw toKnownErr77(e);
 		    });
 		  }
 		  getFeedGenerators(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.feed.getFeedGenerators", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr74(e);
+		      throw toKnownErr78(e);
 		    });
 		  }
 		  getFeedSkeleton(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.feed.getFeedSkeleton", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr75(e);
+		      throw toKnownErr79(e);
 		    });
 		  }
 		  getLikes(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.feed.getLikes", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr76(e);
+		      throw toKnownErr80(e);
 		    });
 		  }
 		  getListFeed(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.feed.getListFeed", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr77(e);
+		      throw toKnownErr81(e);
 		    });
 		  }
 		  getPostThread(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.feed.getPostThread", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr78(e);
+		      throw toKnownErr82(e);
 		    });
 		  }
 		  getPosts(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.feed.getPosts", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr79(e);
+		      throw toKnownErr83(e);
 		    });
 		  }
 		  getRepostedBy(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.feed.getRepostedBy", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr80(e);
+		      throw toKnownErr84(e);
 		    });
 		  }
 		  getSuggestedFeeds(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.feed.getSuggestedFeeds", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr81(e);
+		      throw toKnownErr85(e);
 		    });
 		  }
 		  getTimeline(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.feed.getTimeline", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr82(e);
+		      throw toKnownErr86(e);
 		    });
 		  }
 		  searchPosts(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.feed.searchPosts", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr83(e);
+		      throw toKnownErr87(e);
 		    });
 		  }
 		};
 		var GeneratorRecord = class {
-		  constructor(service) {
-		    this._service = service;
+		  constructor(service2) {
+		    this._service = service2;
 		  }
 		  async list(params2) {
 		    const res = await this._service.xrpc.call("com.atproto.repo.listRecords", {
@@ -25880,8 +26267,8 @@ if (cid) {
 		  }
 		};
 		var LikeRecord = class {
-		  constructor(service) {
-		    this._service = service;
+		  constructor(service2) {
+		    this._service = service2;
 		  }
 		  async list(params2) {
 		    const res = await this._service.xrpc.call("com.atproto.repo.listRecords", {
@@ -25907,8 +26294,8 @@ if (cid) {
 		  }
 		};
 		var PostRecord = class {
-		  constructor(service) {
-		    this._service = service;
+		  constructor(service2) {
+		    this._service = service2;
 		  }
 		  async list(params2) {
 		    const res = await this._service.xrpc.call("com.atproto.repo.listRecords", {
@@ -25934,8 +26321,8 @@ if (cid) {
 		  }
 		};
 		var RepostRecord = class {
-		  constructor(service) {
-		    this._service = service;
+		  constructor(service2) {
+		    this._service = service2;
 		  }
 		  async list(params2) {
 		    const res = await this._service.xrpc.call("com.atproto.repo.listRecords", {
@@ -25961,8 +26348,8 @@ if (cid) {
 		  }
 		};
 		var ThreadgateRecord = class {
-		  constructor(service) {
-		    this._service = service;
+		  constructor(service2) {
+		    this._service = service2;
 		  }
 		  async list(params2) {
 		    const res = await this._service.xrpc.call("com.atproto.repo.listRecords", {
@@ -25988,83 +26375,83 @@ if (cid) {
 		  }
 		};
 		var GraphNS = class {
-		  constructor(service) {
-		    this._service = service;
-		    this.block = new BlockRecord(service);
-		    this.follow = new FollowRecord(service);
-		    this.list = new ListRecord(service);
-		    this.listblock = new ListblockRecord(service);
-		    this.listitem = new ListitemRecord(service);
+		  constructor(service2) {
+		    this._service = service2;
+		    this.block = new BlockRecord(service2);
+		    this.follow = new FollowRecord(service2);
+		    this.list = new ListRecord(service2);
+		    this.listblock = new ListblockRecord(service2);
+		    this.listitem = new ListitemRecord(service2);
 		  }
 		  getBlocks(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.graph.getBlocks", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr84(e);
+		      throw toKnownErr88(e);
 		    });
 		  }
 		  getFollowers(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.graph.getFollowers", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr85(e);
+		      throw toKnownErr89(e);
 		    });
 		  }
 		  getFollows(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.graph.getFollows", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr86(e);
+		      throw toKnownErr90(e);
 		    });
 		  }
 		  getList(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.graph.getList", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr87(e);
+		      throw toKnownErr91(e);
 		    });
 		  }
 		  getListBlocks(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.graph.getListBlocks", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr88(e);
+		      throw toKnownErr92(e);
 		    });
 		  }
 		  getListMutes(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.graph.getListMutes", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr89(e);
+		      throw toKnownErr93(e);
 		    });
 		  }
 		  getLists(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.graph.getLists", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr90(e);
+		      throw toKnownErr94(e);
 		    });
 		  }
 		  getMutes(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.graph.getMutes", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr91(e);
+		      throw toKnownErr95(e);
 		    });
 		  }
 		  getSuggestedFollowsByActor(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.graph.getSuggestedFollowsByActor", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr92(e);
+		      throw toKnownErr96(e);
 		    });
 		  }
 		  muteActor(data, opts) {
 		    return this._service.xrpc.call("app.bsky.graph.muteActor", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr93(e);
+		      throw toKnownErr97(e);
 		    });
 		  }
 		  muteActorList(data, opts) {
 		    return this._service.xrpc.call("app.bsky.graph.muteActorList", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr94(e);
+		      throw toKnownErr98(e);
 		    });
 		  }
 		  unmuteActor(data, opts) {
 		    return this._service.xrpc.call("app.bsky.graph.unmuteActor", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr95(e);
+		      throw toKnownErr99(e);
 		    });
 		  }
 		  unmuteActorList(data, opts) {
 		    return this._service.xrpc.call("app.bsky.graph.unmuteActorList", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr96(e);
+		      throw toKnownErr100(e);
 		    });
 		  }
 		};
 		var BlockRecord = class {
-		  constructor(service) {
-		    this._service = service;
+		  constructor(service2) {
+		    this._service = service2;
 		  }
 		  async list(params2) {
 		    const res = await this._service.xrpc.call("com.atproto.repo.listRecords", {
@@ -26090,8 +26477,8 @@ if (cid) {
 		  }
 		};
 		var FollowRecord = class {
-		  constructor(service) {
-		    this._service = service;
+		  constructor(service2) {
+		    this._service = service2;
 		  }
 		  async list(params2) {
 		    const res = await this._service.xrpc.call("com.atproto.repo.listRecords", {
@@ -26117,8 +26504,8 @@ if (cid) {
 		  }
 		};
 		var ListRecord = class {
-		  constructor(service) {
-		    this._service = service;
+		  constructor(service2) {
+		    this._service = service2;
 		  }
 		  async list(params2) {
 		    const res = await this._service.xrpc.call("com.atproto.repo.listRecords", {
@@ -26144,8 +26531,8 @@ if (cid) {
 		  }
 		};
 		var ListblockRecord = class {
-		  constructor(service) {
-		    this._service = service;
+		  constructor(service2) {
+		    this._service = service2;
 		  }
 		  async list(params2) {
 		    const res = await this._service.xrpc.call("com.atproto.repo.listRecords", {
@@ -26171,8 +26558,8 @@ if (cid) {
 		  }
 		};
 		var ListitemRecord = class {
-		  constructor(service) {
-		    this._service = service;
+		  constructor(service2) {
+		    this._service = service2;
 		  }
 		  async list(params2) {
 		    const res = await this._service.xrpc.call("com.atproto.repo.listRecords", {
@@ -26198,62 +26585,62 @@ if (cid) {
 		  }
 		};
 		var NotificationNS = class {
-		  constructor(service) {
-		    this._service = service;
+		  constructor(service2) {
+		    this._service = service2;
 		  }
 		  getUnreadCount(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.notification.getUnreadCount", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr97(e);
+		      throw toKnownErr101(e);
 		    });
 		  }
 		  listNotifications(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.notification.listNotifications", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr98(e);
+		      throw toKnownErr102(e);
 		    });
 		  }
 		  registerPush(data, opts) {
 		    return this._service.xrpc.call("app.bsky.notification.registerPush", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr99(e);
+		      throw toKnownErr103(e);
 		    });
 		  }
 		  updateSeen(data, opts) {
 		    return this._service.xrpc.call("app.bsky.notification.updateSeen", opts?.qp, data, opts).catch((e) => {
-		      throw toKnownErr100(e);
+		      throw toKnownErr104(e);
 		    });
 		  }
 		};
 		var RichtextNS = class {
-		  constructor(service) {
-		    this._service = service;
+		  constructor(service2) {
+		    this._service = service2;
 		  }
 		};
 		var UnspeccedNS = class {
-		  constructor(service) {
-		    this._service = service;
+		  constructor(service2) {
+		    this._service = service2;
 		  }
 		  getPopular(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.unspecced.getPopular", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr101(e);
+		      throw toKnownErr105(e);
 		    });
 		  }
 		  getPopularFeedGenerators(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.unspecced.getPopularFeedGenerators", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr102(e);
+		      throw toKnownErr106(e);
 		    });
 		  }
 		  getTimelineSkeleton(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.unspecced.getTimelineSkeleton", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr103(e);
+		      throw toKnownErr107(e);
 		    });
 		  }
 		  searchActorsSkeleton(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.unspecced.searchActorsSkeleton", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr104(e);
+		      throw toKnownErr108(e);
 		    });
 		  }
 		  searchPostsSkeleton(params2, opts) {
 		    return this._service.xrpc.call("app.bsky.unspecced.searchPostsSkeleton", params2, void 0, opts).catch((e) => {
-		      throw toKnownErr105(e);
+		      throw toKnownErr109(e);
 		    });
 		  }
 		};
@@ -26300,6 +26687,7 @@ if (cid) {
 		        email: opts.email,
 		        emailConfirmed: false
 		      };
+		      this._updateApiEndpoint(res.data.didDoc);
 		      return res;
 		    } catch (e) {
 		      this.session = void 0;
@@ -26326,6 +26714,7 @@ if (cid) {
 		        email: res.data.email,
 		        emailConfirmed: res.data.emailConfirmed
 		      };
+		      this._updateApiEndpoint(res.data.didDoc);
 		      return res;
 		    } catch (e) {
 		      this.session = void 0;
@@ -26348,6 +26737,7 @@ if (cid) {
 		      this.session.email = res.data.email;
 		      this.session.handle = res.data.handle;
 		      this.session.emailConfirmed = res.data.emailConfirmed;
+		      this._updateApiEndpoint(res.data.didDoc);
 		      return res;
 		    } catch (e) {
 		      this.session = void 0;
@@ -26399,7 +26789,7 @@ if (cid) {
 		    if (!this.session?.refreshJwt) {
 		      return;
 		    }
-		    const url = new URL(this.service.origin);
+		    const url = new URL((this.pdsUrl || this.service).origin);
 		    url.pathname = `/xrpc/${REFRESH_SESSION}`;
 		    const res = await _AtpAgent.fetch(url.toString(), "POST", {
 		      authorization: `Bearer ${this.session.refreshJwt}`
@@ -26415,8 +26805,16 @@ if (cid) {
 		        handle: res.body.handle,
 		        did: res.body.did
 		      };
+		      this._updateApiEndpoint(res.body.didDoc);
 		      this._persistSession?.("update", this.session);
 		    }
+		  }
+		  _updateApiEndpoint(didDoc) {
+		    if (isValidDidDoc(didDoc)) {
+		      const endpoint = getPdsEndpoint(didDoc);
+		      this.pdsUrl = endpoint ? new URL(endpoint) : void 0;
+		    }
+		    this.api.xrpc.uri = this.pdsUrl || this.service;
 		  }
 		};
 		var AtpAgent = _AtpAgent;
@@ -29073,6 +29471,15 @@ if (cid) {
 		      });
 		    }
 		  }
+		  addBlockingByList(blockingByList) {
+		    if (blockingByList) {
+		      this.causes.push({
+		        type: "blocking",
+		        source: { type: "list", list: blockingByList },
+		        priority: 3
+		      });
+		    }
+		  }
 		  addBlockedBy(blockedBy) {
 		    if (blockedBy) {
 		      this.causes.push({
@@ -29202,7 +29609,13 @@ if (cid) {
 		      acc.addMuted(subject.viewer?.muted);
 		    }
 		  }
-		  acc.addBlocking(subject.viewer?.blocking);
+		  if (subject.viewer?.blocking) {
+		    if (subject.viewer?.blockingByList) {
+		      acc.addBlockingByList(subject.viewer?.blockingByList);
+		    } else {
+		      acc.addBlocking(subject.viewer?.blocking);
+		    }
+		  }
 		  acc.addBlockedBy(subject.viewer?.blockedBy);
 		  for (const label of filterAccountLabels(subject.labels)) {
 		    acc.addLabel(label, opts);
@@ -29819,6 +30232,42 @@ if (cid) {
 		  }
 		  async unmute(actor) {
 		    return this.api.app.bsky.graph.unmuteActor({ actor });
+		  }
+		  async muteModList(uri2) {
+		    return this.api.app.bsky.graph.muteActorList({
+		      list: uri2
+		    });
+		  }
+		  async unmuteModList(uri2) {
+		    return this.api.app.bsky.graph.unmuteActorList({
+		      list: uri2
+		    });
+		  }
+		  async blockModList(uri2) {
+		    if (!this.session) {
+		      throw new Error("Not logged in");
+		    }
+		    return await this.api.app.bsky.graph.listblock.create({ repo: this.session.did }, {
+		      subject: uri2,
+		      createdAt: new Date().toISOString()
+		    });
+		  }
+		  async unblockModList(uri2) {
+		    if (!this.session) {
+		      throw new Error("Not logged in");
+		    }
+		    const listInfo = await this.api.app.bsky.graph.getList({
+		      list: uri2,
+		      limit: 1
+		    });
+		    if (!listInfo.data.list.viewer?.blocked) {
+		      return;
+		    }
+		    const { rkey } = new AtUri(listInfo.data.list.viewer.blocked);
+		    return await this.api.app.bsky.graph.listblock.delete({
+		      repo: this.session.did,
+		      rkey
+		    });
 		  }
 		  async updateSeenNotifications(seenAt) {
 		    seenAt = seenAt || new Date().toISOString();

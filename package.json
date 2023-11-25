@@ -3,24 +3,20 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
+  "private": true,
   "scripts": {
-    "build": "npx esbuild lib/lib.js --outfile=lib.js --bundle",
+    "build": "rollup ./lib/lib.js --file ./lib.js --format iife --plugin @rollup/plugin-node-resolve --plugin @rollup/plugin-commonjs --context this",
     "start": "node index.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-  },
-  "-commented-dependencies": {
     "@atproto/api": "*",
     "@atproto/repo": "*",
-    "@atproto/xrpc-server": "*",
-    "@ipld/car": "*",
-    "cbor-x": "*",
-    "esbuild": "*",
-    "multiformats": "*",
-    "three": "*",
-    "troika-three-text": "*"
+    "@rollup/plugin-commonjs": "^25.0.7",
+    "@rollup/plugin-node-resolve": "^15.2.2",
+    "rollup": "^4.0.2",
+    "fuse.js": "^6.6.2"
   }
 }
