@@ -821,57 +821,6 @@ function receipts() {
       }
     }
 
-    /** @param {string} searchText */
-    function textSearcher(searchText) {
-      const mushMatch = new RegExp([...searchText.replace(/[^a-z0-9]/gi, '')].join('.*'), 'i');
-      const mushMatchLead = new RegExp('^' + [...searchText.replace(/[^a-z0-9]/gi, '')].join('.*'), 'i');
-
-      const lowercaseSearchText = searchText.trim().toLowerCase();
-      const lettersOnlySearchText = lowercaseSearchText.replace(/[^a-z0-9]/gi, '');
-
-      const searchWordRegExp = new RegExp(
-        searchText.split(/\s+/)
-          // sort longer words match first
-          .sort((w1, w2) => w2.length - w1.length || (w1 > w2 ? 1 : w1 < w2 ? -1 : 0))
-          // generate a regexp out of word
-          .map(word => '(' + word.toLowerCase().replace(/[|\\{}()[\]^$+*?.]/g, '\\$&') + ')')
-          .join('|'),
-        'gi');
-
-      return matchRank;
-
-      /** @param {string} matchText */
-      function matchRank(matchText) {
-        let rank = 0;
-        const trimmedMatchText = matchText.trim();
-        const lowercaseTrimmedMatchText = trimmedMatchText.toLowerCase();
-        if (!lowercaseTrimmedMatchText) return 0;
-
-        if (trimmedMatchText === searchText) return 600;
-        else if (lowercaseTrimmedMatchText === lowercaseSearchText) return 550;
-
-        if (matchText.trim().toLowerCase().replace(/[^a-z0-9]/gi, '') === lettersOnlySearchText) return 400;
-        {
-          const posLowerc = lowercaseTrimmedMatchText.indexOf(lowercaseSearchText);
-          if (!posLowerc) rank += 30;
-          if (posLowerc > 0) rank += 20;
-        }
-
-        searchWordRegExp.lastIndex = 0;
-        while (true) {
-          const match = searchWordRegExp.exec(matchText);
-          if (!match?.[0]) break;
-          rank += (match[0].length / matchText.length);
-          if (match.index === 0) rank += 3;
-        }
-
-        if (mushMatch.test(matchText)) rank += 0.03;
-        if (mushMatchLead.test(matchText)) rank += 0.05;
-
-        return rank;
-      }
-    }
-
     function likelyDID(text) {
       return text && (
         !text.trim().indexOf('did:') ||
@@ -969,10 +918,10 @@ function receipts() {
      * @typedef {{
      *  shortDID: string;
      *  shortHandle: string;
-     *  avatarUrl: string;
-     *  bannerUrl: string;
-     *  displayName: string;
-     *  description: string;
+     *  avatarUrl: string | undefined;
+     *  bannerUrl: string | undefined;
+     *  displayName: string | undefined;
+     *  description: string | undefined;
      * }} ProfileDetailsEntry
      */
 
@@ -1461,7 +1410,7 @@ function receipts() {
 
       /**
        * @param {{
-       *  post: import ('./lib/node_modules/@atproto/api').AppBskyFeedPost.Record,
+       *  post: import ('@atproto/api').AppBskyFeedPost.Record,
        *  textHighlights?: string,
        *  textLightHighlights?: string,
        * }} _
@@ -1504,7 +1453,7 @@ function receipts() {
                 rkey: uriEntity.postID
               });
 
-              /** @type {import ('./lib/node_modules/@atproto/api').AppBskyFeedPost.Record} */
+              /** @type {import('@atproto/api').AppBskyFeedPost.Record} */
               const parentPost = /** @type {*} */(postRecord.data.value);
 
               if (!parentPost) return;
@@ -1534,7 +1483,7 @@ function receipts() {
 
         /**
          * @param {{
-         *  post: import ('./lib/node_modules/@atproto/api').AppBskyFeedPost.Record,
+         *  post: import('@atproto/api').AppBskyFeedPost.Record,
          *  textHighlights?: string,
          *  textLightHighlights?: string,
          *  withReply?: unknown
@@ -1706,7 +1655,7 @@ function receipts() {
     }
 
     /**
-     * @typedef {import('./lib/node_modules/@atproto/api').AppBskyFeedPost.Record & {
+     * @typedef {import('@atproto/api').AppBskyFeedPost.Record & {
      *  uri: string,
      *  dom?: HTMLElement,
      *  textHighlights?: string,
@@ -1817,6 +1766,9 @@ function receipts() {
     const waitForLibrariesLoaded = new Promise((resolve) => {
       // @ts-ignore
       receipts = () => {
+        const oldXrpc = 'https://bsky.social/xrpc';
+        // const newXrpc = 'https://bsky.network/xrpc';
+
         atClient = new atproto_api.BskyAgent({ service: 'https://bsky.social/xrpc' });
         resolve(undefined);
       }
@@ -1831,7 +1783,7 @@ function receipts() {
   }
 
 
-  function runInLocalNodeScript() {
+  async function runInLocalNodeScript() {
     const fs = require('fs');
     const path = require('path');
     require('./lib.js');
@@ -1941,7 +1893,9 @@ function receipts() {
     }
 
     function loadFromReceitptsDb() {
+      /** @type {{ [shortDID: string]: string | [handle: string, displayName?: string] }} */
       const allUsers = {};
+      /** @type {{ [first2Letters: string] : typeof allUsers }} */
       const byFirst2Letters = {};
       const receiptsDbDir = path.resolve(__dirname, '../receipts-db');
       const dirs = fs.readdirSync(receiptsDbDir)
@@ -1954,6 +1908,7 @@ function receipts() {
           .filter(file => /\.js$/.test(file));
 
         for (const file of files) {
+          /** @type {typeof allUsers} */
           const bucket = evalJsonp(fs.readFileSync(file, 'utf8'));
           Object.assign(allUsers, bucket);
           const first2Letters = path.basename(file, '.js');
@@ -1962,6 +1917,139 @@ function receipts() {
       }
 
       return { allUsers, byFirst2Letters };
+    }
+
+    async function makeSearchIndex() {
+      console.log('Fetching Unicode data...');
+      const localUnicodeDataPath = path.resolve(__dirname, '../receipts-db/UnicodeData.txt');
+      const unicodeDataTxt =fs.existsSync(localUnicodeDataPath) ? fs.readFileSync(localUnicodeDataPath, 'utf8') :
+        await new Promise((resolve, reject) => require('https').get(
+        'https://unicode.org/Public/UNIDATA/UnicodeData.txt',
+        (res) => {
+          res.on('error', (err) => reject(err));
+          let data = [];
+          res.on('data', (chunk) => data.push(chunk));
+          res.on('end', () => resolve(Buffer.concat(data).toString('utf8')));
+          }));
+      if (!fs.existsSync(localUnicodeDataPath))
+        fs.writeFileSync(localUnicodeDataPath, unicodeDataTxt);
+
+      console.log('Processing unicode data...');
+
+      /** @type {[code: string, name: string, category: string]} */
+      const unicodeData = unicodeDataTxt.split('\n').filter(line => !!line).map(line => line.split(';'));
+      const characterCategories = {};
+      const characterNameWords = [];
+      const firstCharacterNameWordFrequencies = {};
+      const midCharacterNameWordFrequencies = {};
+
+      const emojiRegExp = /\p{Emoji_Presentation}|\p{Emoji}/ug;
+      for (const [code, name, category] of unicodeData) {
+        const char = String.fromCharCode(parseInt(code, 16));
+        characterCategories[char] = category;
+
+        if (category.charAt(0) === 'S') {
+          const nameWords = name.split(' ');
+          characterNameWords[char] = nameWords;
+
+          if (emojiRegExp.test(char)) {
+            continue;
+          }
+
+          let first = true;
+          for (const word of nameWords) {
+            if (word.length <= 1) continue;
+            const freqs = first ? firstCharacterNameWordFrequencies : midCharacterNameWordFrequencies;
+            freqs[word] = (freqs[word] || 0) + 1;
+            first = false;
+          }
+        }
+      }
+
+      const firstCharacterNameWordsSorted = Object.keys(firstCharacterNameWordFrequencies).sort((a, b) =>
+        firstCharacterNameWordFrequencies[b] - firstCharacterNameWordFrequencies[a]);
+      const midCharacterNameWordsSorted = Object.keys(midCharacterNameWordFrequencies).sort((a, b) =>
+        midCharacterNameWordFrequencies[b] - midCharacterNameWordFrequencies[a]);
+      
+      const genericFirstCharacterNames = firstCharacterNameWordsSorted.filter(word =>
+        firstCharacterNameWordFrequencies[word] >= 15);
+      const genericMidCharacterNames = firstCharacterNameWordsSorted.filter(word =>
+        midCharacterNameWordFrequencies[word] >= 25);
+      
+      for (const char in characterNameWords) {
+        if (emojiRegExp.test(char)) continue;
+
+        const words = characterNameWords[char];
+        if (!Array.isArray(words)) continue;
+
+        let updateWords;
+        let first = true;
+        for (const w of words) {
+          const checkIn = first ? genericFirstCharacterNames : genericMidCharacterNames;
+          // if (checkIn.indexOf(w) >= 0) {
+          //   if (!updateWords) updateWords = words.slice();
+          //   updateWords[words.indexOf(w)] = w + char;
+          // }
+        }
+      }
+
+      console.log('Generic first character names: ',
+        genericFirstCharacterNames.map(word => word + ':' + firstCharacterNameWordFrequencies[word]).join(', '));
+      console.log();
+      console.log('Generic mid character names: ',
+        genericMidCharacterNames.map(word => word + ':' + midCharacterNameWordFrequencies[word]).join(', '));
+      
+      for ()
+
+      return;
+
+      console.log('reading...');
+      const { allUsers, byFirst2Letters } = loadFromReceitptsDb();
+
+
+
+      //const atClient = new atproto_api.BskyAgent({ service: 'https://bsky.social/xrpc' });
+
+      const allDIDs = Object.keys(allUsers).sort();
+      const firstDID = allDIDs[0];
+      console.log('firstDID: ' + firstDID);
+
+      let letterCount = 0;
+      for (const twoLettersKey in byFirst2Letters) {
+        if (/\d/.test(twoLettersKey)) continue;
+        if (!/^t/.test(twoLettersKey)) continue;
+
+        if (letterCount++ > 6) break;
+
+        const twoActualLetters = twoLettersKey.split('/').slice(-1)[0];
+        const searcher = new RegExp('\\b' + twoActualLetters, 'i');
+        const match = Object.keys(allUsers).filter(shortDID => {
+          let pair = allUsers[shortDID];
+          let handle, displayName;
+          if (typeof pair === 'string')
+            handle = pair;
+          else
+            [handle, displayName] = pair;
+
+          if (searcher.test(handle)) return true;
+          else if (displayName && searcher.test(displayName)) return true;
+
+          if (byFirst2Letters[twoLettersKey][shortDID]) {
+            //console.log('  ' + shortDID + ' ' + handle + ' ' + displayName + ' DOES NOT MATCH ' + twoActualLetters);
+          }
+        });
+
+        console.log(
+          twoLettersKey + ': ' + match.length + ' matches, ' +
+          Object.keys(byFirst2Letters[twoLettersKey]).length + ' bucket');
+      }
+
+      return;
+
+      function words(str) {
+
+      }
+
     }
 
     async function updateUsers() {
@@ -2034,7 +2122,11 @@ function receipts() {
             ((nextList.data?.repos?.length || 0) / (batchEndTime - batchStart) * 1000).toFixed(1) + ' per second ' +
             '(total ' + Object.keys(allUsers).length + ' users)\n\n');
 
-          if (!nextList.data?.cursor) break;
+          if (!nextList.data?.cursor) {
+            console.log('received cursor ' + nextList.data?.cursor, ', ', nextList.data?.repos?.length, ' repos. EXIT.');
+            break;
+          }
+
           currentCursor = nextList.data.cursor;
         } catch (handlingError) {
           console.error('Error while listing repos', handlingError);
@@ -2091,8 +2183,11 @@ function receipts() {
     // console.log('Transferring Atlas users...');
     // convertAtlasDbJsonpUsers();
 
-    console.log('Receipts updates: users...');
-    updateUsers();
+    // console.log('Receipts updates: users...');
+    // await updateUsers();
+    // console.log('COMPLETE.');
+
+    makeSearchIndex();
   }
 
   function runInAzure() {
@@ -2147,6 +2242,57 @@ function receipts() {
     return { shortDID: match[2], postID: match[3] };
   }
   const _breakFeedUri_Regex = /^at\:\/\/(did:plc:)?([a-z0-9]+)\/[a-z\.]+\/?(.*)?$/;
+
+  /** @param {string} searchText */
+  function textSearcher(searchText) {
+    const mushMatch = new RegExp([...searchText.replace(/[^a-z0-9]/gi, '')].join('.*'), 'i');
+    const mushMatchLead = new RegExp('^' + [...searchText.replace(/[^a-z0-9]/gi, '')].join('.*'), 'i');
+
+    const lowercaseSearchText = searchText.trim().toLowerCase();
+    const lettersOnlySearchText = lowercaseSearchText.replace(/[^a-z0-9]/gi, '');
+
+    const searchWordRegExp = new RegExp(
+      searchText.split(/\s+/)
+        // sort longer words match first
+        .sort((w1, w2) => w2.length - w1.length || (w1 > w2 ? 1 : w1 < w2 ? -1 : 0))
+        // generate a regexp out of word
+        .map(word => '(' + word.toLowerCase().replace(/[|\\{}()[\]^$+*?.]/g, '\\$&') + ')')
+        .join('|'),
+      'gi');
+
+    return matchRank;
+
+    /** @param {string} matchText */
+    function matchRank(matchText) {
+      let rank = 0;
+      const trimmedMatchText = matchText.trim();
+      const lowercaseTrimmedMatchText = trimmedMatchText.toLowerCase();
+      if (!lowercaseTrimmedMatchText) return 0;
+
+      if (trimmedMatchText === searchText) return 600;
+      else if (lowercaseTrimmedMatchText === lowercaseSearchText) return 550;
+
+      if (matchText.trim().toLowerCase().replace(/[^a-z0-9]/gi, '') === lettersOnlySearchText) return 400;
+      {
+        const posLowerc = lowercaseTrimmedMatchText.indexOf(lowercaseSearchText);
+        if (!posLowerc) rank += 30;
+        if (posLowerc > 0) rank += 20;
+      }
+
+      searchWordRegExp.lastIndex = 0;
+      while (true) {
+        const match = searchWordRegExp.exec(matchText);
+        if (!match?.[0]) break;
+        rank += (match[0].length / matchText.length);
+        if (match.index === 0) rank += 3;
+      }
+
+      if (mushMatch.test(matchText)) rank += 0.03;
+      if (mushMatchLead.test(matchText)) rank += 0.05;
+
+      return rank;
+    }
+  }
 
   /**
  * @param {any} x
