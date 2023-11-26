@@ -1893,7 +1893,7 @@ function receipts() {
     }
 
     function loadFromReceitptsDb() {
-      /** @type {{ [shortDID: string]: string | [handle: string, displayName?: string] }} */
+      /** @type {{ [shortDID: string]: string | [handle: string, displayName: string] }} */
       const allUsers = {};
       /** @type {{ [first2Letters: string] : typeof allUsers }} */
       const byFirst2Letters = {};
@@ -1939,7 +1939,8 @@ function receipts() {
       /** @type {[code: string, name: string, category: string]} */
       const unicodeData = unicodeDataTxt.split('\n').filter(line => !!line).map(line => line.split(';'));
       const characterCategories = {};
-      const characterNameWords = [];
+      const characterNames = {};
+      const characterNameWords = {};
       const firstCharacterNameWordFrequencies = {};
       const midCharacterNameWordFrequencies = {};
 
@@ -1947,6 +1948,7 @@ function receipts() {
       for (const [code, name, category] of unicodeData) {
         const char = String.fromCharCode(parseInt(code, 16));
         characterCategories[char] = category;
+        characterNames[char] = name;
 
         if (category.charAt(0) === 'S') {
           const nameWords = name.split(' ');
@@ -1998,13 +2000,33 @@ function receipts() {
       console.log();
       console.log('Generic mid character names: ',
         genericMidCharacterNames.map(word => word + ':' + midCharacterNameWordFrequencies[word]).join(', '));
-      
-      for ()
-
-      return;
 
       console.log('reading...');
       const { allUsers, byFirst2Letters } = loadFromReceitptsDb();
+
+      /** @type {{ [key: string]: { [shortDID: string]: string | [handle: string, displayName: string] } }} */
+      const index = {};
+
+      const buf = [];
+      for (const shortDID in allUsers) {
+        let handle, displayName;
+        const pair = allUsers[shortDID];
+        if (typeof pair === 'string')
+          handle = pair;
+        else
+          [handle, displayName] = pair;
+
+        buf.length = 0;
+        getIndexKeys(shortDID, handle, displayName, buf);
+        for (const indexKey of buf) {
+          const byShortDID = index[indexKey];
+          if (byShortDID) byShortDID[shortDID] = pair;
+          else index[indexKey] = { [shortDID]: pair };
+        }
+      }
+
+      return;
+
 
 
 
@@ -2046,8 +2068,106 @@ function receipts() {
 
       return;
 
-      function words(str) {
+      /**
+       * @param {string} shortDID
+       * @param {string} handle
+       * @param {string | undefined} displayName
+       * @param {string[]} indexKeys
+       */
+      function getIndexKeys(shortDID, handle, displayName, indexKeys) {
+        indexKeys.push(shortDID.slice(0, 2));
+        getWords(handle, indexKeys);
+        if (displayName) getWords(displayName, indexKeys);
+      }
 
+      /**
+       * @param {string} text
+       * @param {string[]} indexKeys
+       */
+      function getWords(text, indexKeys) {
+        const stripAccents = String(text || '').normalize("NFD").replace(/[\u0300-\u036f]/g, '');
+        const chars = [...stripAccents];
+        for (let i = 0; i < chars.length; i++) {
+          const ch = chars[i];
+          if (emojiRegExp.test(ch)) {
+            addWord(ch, indexKeys);
+            continue;
+          }
+
+          const category = characterCategories[ch].charAt(0);
+          if (category === 'L') {
+            // collect 2 letters, skip rest of the word
+            // (normalize away accents)
+          }
+
+          if (category === 'N') {
+            let numStrLength = 1;
+            let numberStr = getNumber(ch);
+            if (!numberStr) continue;
+            if (numberStr.length < 2 && i + 1 < chars.length) {
+              const nextCh = chars[i + 1];
+              const nextCategory = characterCategories[nextCh].charAt(0);
+              if (nextCategory !== 'N') break;
+              const nextNumStr = getNumber(nextCh);
+              if (!nextNumStr) numberStr += nextNumStr;
+            }
+            addWord(numberStr)
+          }
+
+          if (category === 'S') {
+            addWord(ch, indexKeys);
+            continue;
+          }
+
+        }
+      }
+
+      function getCategory(ch) {
+        if (ch >= 'a' && ch <= 'z' || ch >= 'A' || ch <= 'Z') return 'L';
+        else if (ch => '0' && ch <= '9') return 'N';
+        else if (emojiRegExp.test(ch)) return 'E';
+
+        const cat = characterCategories[ch];
+        
+      }
+    
+      /** @type {RegExp} */
+      var numRegexp;
+      function getNumber(ch) {
+        if (ch >= '0' && ch <= '9') return ch;
+
+        const name = characterNames[ch];
+        let str = '';
+        if (!numRegexp) numRegexp = initRegExpGetNumber();
+        const match = numRegexp.exec(name);
+        if (match)
+          return String(50 - match.map(x => x ? 'a' : ' ').slice(1).join('').indexOf('a'));
+      }
+
+      function initRegExpGetNumber() {
+        const oneToNine = ['ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE'];
+        return new RegExp([
+          'FIFTY',
+          ...[].concat.apply([], ['FOURTY', 'THIRTY', 'TWENTY'].map(tens =>
+            oneToNine.slice().reverse().map(dig => tens + ' ' + dig).concat([tens]))),
+          'NINETEEN',
+          'EIGHTEEN',
+          'SEVENTEEN',
+          'SIXTEEN',
+          'FIFTEEN',
+          'FOURTEEN',
+          'THIRTEEN',
+          'TWELVE',
+          'ELEVEN',
+          'TEN',
+          ...oneToNine.slice().reverse(),
+          'ZERO'
+        ].map(num => '(' + num + ')').join('|'));
+      }
+
+      function addWord(ch, indexKey) {
+        if (indexKey.indexOf(ch) < 0)
+          indexKey.push(ch);
       }
 
     }
