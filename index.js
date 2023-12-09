@@ -2276,6 +2276,7 @@ function receipts() {
 
         const first2Letters = getHandleBucket(shortHandle);
         const bucket = byFirst2Letters[first2Letters] || (byFirst2Letters[first2Letters] = {});
+        /** @type {string| [string,string]} */
         const descr = displayName ? [shortHandle, displayName] : shortHandle;
 
         const existingDescr = allUsers[shortDID];
