@@ -2172,6 +2172,32 @@ function receipts() {
 
     }
 
+    async function exportToBlueSkyStatic() {
+      console.log('Reading receipts-db...');
+      const { allUsers, byFirst2Letters } = loadFromReceitptsDb();
+      const dids = Object.keys(allUsers);
+      console.log('  OK ' + dids.length + ' users.');
+
+      console.log('Making dids export...');
+      let didsLines = [];
+      const chunkSize = 6;
+      let totalLength = 2;
+      for (let i = 0; i < dids.length; i += chunkSize) {
+        const chunk = dids.slice(i, i + chunkSize);
+        const line = chunk.map(shortDID => '"' + shortDID + '"').join(',');
+        didsLines.push(line);
+        totalLength += 2;
+      }
+      totalLength += 2;
+      console.log(' OK ' +totalLength + ' characters.');
+
+      console.log('Saving...');
+      fs.writeFileSync(
+        path.join(__dirname, '../bluesky-static/accounts/dids.json'),
+        '[\n' + didsLines.join(',\n') + '\n]\n'
+      );
+    }
+
     async function updateUsers() {
       console.log('Reading receipts-db...');
       const { allUsers, byFirst2Letters } = loadFromReceitptsDb();
@@ -2308,7 +2334,9 @@ function receipts() {
     // await updateUsers();
     // console.log('COMPLETE.');
 
-    makeSearchIndex();
+    // makeSearchIndex();
+
+    exportToBlueSkyStatic();
   }
 
   function runInAzure() {
