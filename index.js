@@ -169,7 +169,7 @@ function receipts() {
 }
 
 .statsPane .title {
-  padding: 1em 1em 0 1em;
+  padding: 0.5em 1em 0 0.5em;
 }
 
 .statsPane .avatar .avatar-image {
@@ -461,6 +461,7 @@ function receipts() {
   .statsPane {
     grid-row: 4;
     grid-column: 1;
+    padding-bottom: 0.5em;
   }
 
   .resultsPane {
