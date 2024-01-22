@@ -1062,7 +1062,7 @@ function receipts() {
         async function updateAvatarAndBio() {
           const profileDetails = await getProfileDetailsByShortDID(shortDID);
 
-          dom.titleH2.textContent = displayName;
+          dom.titleH2.textContent = profileDetails.displayName;
           if (profileDetails?.avatarUrl) {
             avatarElem.innerHTML = '';
             elem('img', {
