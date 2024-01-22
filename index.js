@@ -200,14 +200,20 @@ function receipts() {
   opacity: 0.6;
 }
 
-.statsPane .bio {
-  clear: both;
-  font: inherit;
-  white-space: pre-line;
+.bio {
+  padding: 0;
   margin: 0;
-  padding: 1em 1em 0.5em 1em;
-  font-size: 90%;
-  overflow-y: auto;
+  padding-left: 0.5em;
+  padding-bottom: 0.5em;
+  line-height: 1;
+  font-family: inherit;
+}
+
+@media (max-width: 800px) {
+  .bio {
+    grid-row: 5;
+    grid-column: 1;
+  }
 }
 
 .resultsPane {
@@ -222,6 +228,8 @@ function receipts() {
 
 @media (max-width: 800px) {
   .resultsPane {
+    grid-row: 6;
+    grid-column: 1;
     overflow: visible;
   }
 }
@@ -430,7 +438,7 @@ function receipts() {
 
 @media (max-width: 800px) {
   #receiptsHost {
-    grid-template-rows: 1fr auto auto auto 10fr;
+    grid-template-rows: 1fr auto auto auto auto 10fr;
     grid-template-columns: 1fr;
   }
 
