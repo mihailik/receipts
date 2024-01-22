@@ -207,8 +207,9 @@ function receipts() {
   margin: 0;
   padding-left: 0.5em;
   padding-bottom: 0.5em;
-  line-height: 1;
+  line-height: 1.2;
   font-family: inherit;
+  white-space: pre-line;
 }
 
 @media (max-width: 800px) {
@@ -390,7 +391,7 @@ function receipts() {
 
 @media (max-width: 800px) {
   .resultsPane .search-panel {
-    top: 6em;
+    top: 5em;
   }
 }
 
@@ -463,7 +464,7 @@ function receipts() {
   }
 
   .resultsPane {
-    grid-row: 5;
+    grid-row: 6;
     grid-column: 1;
 
     border-left: none;
