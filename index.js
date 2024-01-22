@@ -460,10 +460,6 @@ function receipts() {
     grid-column: 1;
   }
 
-  .statsPane .bio {
-    max-height: 9em;
-  }
-
   .resultsPane {
     grid-row: 5;
     grid-column: 1;
@@ -485,6 +481,7 @@ function receipts() {
        *  searchPane: HTMLElement,
        *  searchINPUT: HTMLInputElement & { autocompleteDIV?: HTMLDivElement },
        *  statsPane: HTMLElement,
+       *  bio: HTMLElement,
        *  resultsPane: HTMLElement,
        *  closeLink: HTMLElement
        * }}
@@ -1051,20 +1048,13 @@ function receipts() {
           ]
         });
 
-        const bioElem = elem('pre', {
-          className: 'bio',
-          textContent: 'bio...',
-          parentElement: dom.statsPane,
-        });
-
         updateAvatarAndBio();
 
         return {
           titleLine,
           avatar: avatarElem,
           handle: handleElem,
-          did: didElem,
-          bio: bioElem
+          did: didElem
         };
 
         async function updateAvatarAndBio() {
@@ -1083,7 +1073,7 @@ function receipts() {
             dom.banner.style.backgroundImage = 'url(' + profileDetails.bannerUrl + ')';
           }
 
-          bioElem.textContent = profileDetails?.description || '<empty bio>';
+          dom.bio.textContent = profileDetails?.description || '<empty bio>';
         }
       }
 
