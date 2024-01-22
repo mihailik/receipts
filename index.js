@@ -1754,6 +1754,7 @@ function receipts() {
       dom.closeLink.onclick = () => {
         history.pushState({}, '', 'index.html');
         dom.resultsPane.textContent = 'Pick an account to search history.';
+        dom.bio.textContent = '';
         displaySearchPage();
       };
 
