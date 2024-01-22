@@ -28,6 +28,8 @@ function receipts() {
 </div>
 <div class=statsPane>
 </div>
+<div class=bio>
+</div>
 <div class=closeLink></div>
 <div class=resultsPane>
 <div style="padding: 1em;">
