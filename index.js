@@ -1418,8 +1418,6 @@ function receipts() {
        * }} _
        */
       function renderPost({ post, textHighlights, textLightHighlights }) {
-        const postUri = breakFeedUri(/** @type {string} */(post.uri));
-
         /** @type {HTMLElement} */
         let expandThreadAboveElement = /** @type {*} */(undefined);
 
@@ -1455,14 +1453,14 @@ function receipts() {
                 rkey: uriEntity.postID
               });
 
-              /** @type {import('@atproto/api').AppBskyFeedPost.Record} */
+              /** @type {import('@atproto/api').AppBskyFeedPost.Record & { uri?: string }} */
               const parentPost = /** @type {*} */(postRecord.data.value);
+              parentPost.uri = parent.uri;
 
               if (!parentPost) return;
 
               const parentPostElem = renderPostCore({
-                post: parentPost,
-                postShortDID: uriEntity.shortDID,
+                post: parentPost
               });
               parentPostElem.className += ' injected-parent';
               expandThreadAboveElement.parentElement?.insertBefore(
@@ -1485,19 +1483,25 @@ function receipts() {
 
         /**
          * @param {{
-         *  post: import('@atproto/api').AppBskyFeedPost.Record,
+         *  post: import('@atproto/api').AppBskyFeedPost.Record & { uri?: string },
          *  textHighlights?: string,
          *  textLightHighlights?: string,
          *  withReply?: unknown
-         *  postShortDID?: string,
          * }} _
          */
-        function renderPostCore({ post, withReply, postShortDID, textHighlights, textLightHighlights }) {
+        function renderPostCore({ post, withReply, textHighlights, textLightHighlights }) {
+          const postUri = breakFeedUri(post.uri);
+
           /** @type {HTMLElement | undefined} */
           let loadAvatarElem;
 
           /** @type {HTMLElement | undefined} */
           let handleElem;
+
+          /** @type {HTMLAnchorElement | undefined} */
+          let linkElem;
+
+          const authorOrPromise = getProfileDetailsByShortDID(postUri?.shortDID);
 
           const postElem = elem('div', {
             className: 'post',
@@ -1514,13 +1518,15 @@ function receipts() {
                   elem('div', {
                     className: 'post-content-line-timestamp' + (withReply ? ' asreply' : ''),
                     children: [
-                      postShortDID && (loadAvatarElem = elem('span', {
+                      postUri?.shortDID && (loadAvatarElem = elem('span', {
                         className: 'post-content-line-avatar'
                       })),
-                      postShortDID && (handleElem = elem('span', { className: 'post-content-line-handle' })),
-                      elem('a', {
+                      postUri?.shortDID && (handleElem = elem('span', { className: 'post-content-line-handle' })),
+                      linkElem = elem('a', {
                         target: '_blank',
-                        href: postUri && 'https://bsky.app/profile/' + unwrapShortHandle(shortHandle) + '/post/' + postUri.postID,
+                        href:
+                          postUri &&
+                          'https://bsky.app/profile/' + (isPromise(authorOrPromise) ? unwrapShortDID(postUri.shortDID) : unwrapShortHandle(authorOrPromise.shortHandle)) + '/post/' + postUri.postID,
                         children: renderPostTime(post.createdAt)
                       })
                     ]
@@ -1553,7 +1559,7 @@ function receipts() {
                         elem('img', {
                           className: 'post-content-line-image',
                           src: 'https://bsky.social/xrpc/com.atproto.sync.getBlob?did=' +
-                            unwrapShortDID(postShortDID || shortDID) + '&cid=' + img.image.ref,
+                            unwrapShortDID(postUri?.shortDID) + '&cid=' + img.image.ref,
                         })
                       ]
                     }))
@@ -1565,7 +1571,7 @@ function receipts() {
 
           if (loadAvatarElem) {
             (async () => {
-              const profileDetails = await getProfileDetailsByShortDID(postShortDID);
+              const profileDetails = isPromise(authorOrPromise) ? await authorOrPromise : authorOrPromise;
               if (profileDetails?.avatarUrl) {
                 loadAvatarElem.className += ' loaded';
                 loadAvatarElem.appendChild(elem('img', {
@@ -1577,6 +1583,10 @@ function receipts() {
                 handleElem.textContent =
                   profileDetails.displayName ? profileDetails.displayName :
                     '@' + profileDetails.shortHandle;
+              }
+
+              if (linkElem && postUri) {
+                linkElem.href = 'https://bsky.app/profile/' + unwrapShortHandle(profileDetails.shortHandle) + '/post/' + postUri.postID;
               }
             })()
           }
