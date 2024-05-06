@@ -386,6 +386,59 @@ function receipts() {
   border-radius: 0.5em;
 }
 
+.resultsPane .post-list .post .post-content-line-embed-external {
+  max-width: 91%;
+  margin-left: 5%;
+  margin-top: 0.8em;
+  margin-bottom: 0.2em;
+  border: solid 1px cornflowerblue;
+  padding: 0.5em;
+  border-radius: 0.5em;
+}
+
+.resultsPane .post-list .post .post-content-line-embed-external .post-content-line-embed-title {
+  font-weight: bold;
+}
+
+.resultsPane .post-list .post .post-content-line-embed-external .post-content-line-embed-title a {
+  color: inherit;
+}
+
+.resultsPane .post-list .post .post-content-line-embed-external .post-content-line-embed-url {
+  color: gray;
+  font-size: 90%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 0.5em;
+}
+
+.resultsPane .post-list .post .post-content-line-embed-external .post-content-line-embed-url a {
+  text-decoration: none;
+  color: inherit;
+}
+
+.resultsPane .post-list .post .post-content-line-embed-external .post-content-line-embed-external-thumb-wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.resultsPane .post-list .post .post-content-line-embed-external .post-content-line-embed-external-thumb-image {
+  max-width: 90%;
+  max-height: 50vh;
+}
+
+.resultsPane .post-list .post .post-content-line-embed-external .post-content-line-embed-external-thumb .post-content-line-embed-external-thumb-direct {
+  position: absolute;
+  display: block;
+  left: 0;
+  top: 0;
+  width: 100%; height: 100%;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
 .resultsPane .post-list .post .post-content-line-embed-quote .post-content-line-embed-quote-load {
   color: cornflowerblue;
   font-style: italic;
@@ -1472,13 +1525,14 @@ function receipts() {
        *  post: import ('@atproto/api').AppBskyFeedPost.Record,
        *  textHighlights?: string,
        *  textLightHighlights?: string,
+       *  maxEmbedQuoteCount?: number
        * }} _
        */
-      function renderPost({ post, textHighlights, textLightHighlights }) {
+      function renderPost({ post, textHighlights, textLightHighlights, maxEmbedQuoteCount }) {
         /** @type {HTMLElement} */
         let expandThreadAboveElement = /** @type {*} */(undefined);
 
-        const postElem = renderPostCore({ post, withReply: post.reply, textHighlights, textLightHighlights });
+        const postElem = renderPostCore({ post, withReply: post.reply, textHighlights, textLightHighlights, maxEmbedQuoteCount });
 
         if (expandThreadAboveElement) {
           expandThreadAboveElement.onclick = toggleThreadAbove;
@@ -1517,7 +1571,8 @@ function receipts() {
               if (!parentPost) return;
 
               const parentPostElem = renderPostCore({
-                post: parentPost
+                post: parentPost,
+                maxEmbedQuoteCount
               });
               parentPostElem.className += ' injected-parent';
               expandThreadAboveElement.parentElement?.insertBefore(
@@ -1559,13 +1614,14 @@ function receipts() {
           /** @type {HTMLAnchorElement | undefined} */
           let linkElem;
 
-          const authorOrPromise = getProfileDetailsByShortDID(postUri?.shortDID);
+          const authorOrPromise = getProfileDetailsByShortDID(postUri?.shortDID || '');
 
-          let embedPostURI =
-            typeof maxEmbedQuoteCount !== 'number' || maxEmbedQuoteCount ?
-              breakFeedUri(/** @type {*} */(post.embed)?.record?.uri) : undefined;
-          /** @type {HTMLElement} */
-          let  loadQuoteElem;
+          let embedImages = /** @type {*} */(post.embed?.images) || /** @type {*} */(post.embed?.media)?.images;
+          let embedPostURI = typeof maxEmbedQuoteCount !== 'number' || maxEmbedQuoteCount ?
+            /** @type {*} */(post.embed)?.record?.uri || /** @type {*} */(post.embed)?.record?.record?.uri : undefined;
+          let embedPostURIParsed = breakFeedUri(embedPostURI);
+          /** @type {HTMLElement | undefined} */
+          let  loadQuoteElem = undefined;
 
           const postElem = elem('div', {
             className: 'post',
@@ -1614,9 +1670,9 @@ function receipts() {
                       })
                     ]
                   }),
-                  /** @type {*} */(post.embed?.images)?.length && elem('div', {
+                  embedImages?.length && elem('div', {
                   className: 'post-content-line' + (withReply ? ' asreply' : ''),
-                    children: /** @type {*} */(post.embed?.images).map(img => elem('div', {
+                    children: embedImages.map(img => elem('div', {
                       className: 'post-content-line-image-entry',
                       children: [
                         img.alt && elem('div', {
@@ -1631,7 +1687,7 @@ function receipts() {
                       ]
                     }))
                   }),
-                  !embedPostURI ? undefined : elem('div', {
+                  !embedPostURIParsed ? undefined : elem('div', {
                     className: 'post-content-line' + (withReply ? ' asreply' : ''),
                     children: [
                       loadQuoteElem = elem('div', {
@@ -1643,6 +1699,63 @@ function receipts() {
                           })
                         ]
                       })
+                    ]
+                  }),
+                  !post.embed?.external ? undefined : elem('div', {
+                    className: 'post-content-line' + (withReply ? ' asreply' : ''),
+                    children: [
+                      elem('div', {
+                        className: 'post-content-line-embed-external',
+                        children: [
+                          elem('div', {
+                            className: 'post-content-line-embed-title',
+                            children: [
+                              elem('a', {
+                                href: /** @type {*} */(post.embed?.external).uri,
+                                textContent: /** @type {*} */(post.embed?.external).title
+                              })
+                            ]
+                          }),
+                          elem('div', {
+                            className: 'post-content-line-embed-url',
+                            children: [
+                              elem('a', {
+                                href: /** @type {*} */(post.embed?.external).uri,
+                                textContent: decodeURI(/** @type {*} */(post.embed?.external).uri)
+                              })
+                            ]
+                          }),
+                          /** @type {*} */(post.embed?.external).alt && elem('div', {
+                            className: 'post-content-line-embed-external-description',
+                            textContent: /** @type {*} */(post.embed?.external).description
+                          }),
+                          /** @type {*} */(post.embed?.external).thumb && elem('div', {
+                            className: 'post-content-line-embed-external-thumb',
+                            children: [
+                              elem('a', {
+                                children: [
+                                  elem('span', {
+                                    className: 'post-content-line-embed-external-thumb-wrap',
+                                    children: [
+                                      elem('img', {
+                                        className: 'post-content-line-embed-external-thumb-image',
+                                        src: 'https://bsky.social/xrpc/com.atproto.sync.getBlob?did=' +
+                                          unwrapShortDID(postUri?.shortDID) + '&cid=' + /** @type {*} */(post.embed?.external).thumb.ref
+                                      }),
+                                      elem('span', {
+                                        className: 'post-content-line-embed-external-thumb-direct',
+                                        title: 'url(' + /** @type {*} */(post.embed?.external).uri + ')',
+                                        backgroundImage: 'url(' + /** @type {*} */(post.embed?.external).uri + ')'
+                                      })
+                                    ]
+                                  })
+                                ],
+                                href: /** @type {*} */(post.embed?.external).uri,
+                              })
+                            ]
+                          })
+                        ]
+                      }),
                     ]
                   })
                 ]
@@ -1672,14 +1785,9 @@ function receipts() {
             })()
           }
 
-          if (embedPostURI) {
+          if (embedPostURIParsed && loadQuoteElem) {
             (async () => {
-              const quotedPostRecord = (await atClient.com.atproto.repo.getRecord({
-                repo: unwrapShortDID(embedPostURI.shortDID),
-                collection: 'app.bsky.feed.post',
-                rkey: embedPostURI.postID
-              })).data.value;
-              quotedPostRecord.uri = /** @type {*} */(post.embed)?.record?.uri;
+              const quotedPostRecord = await getPostByURI(embedPostURI);
 
               console.log(
                 'post ', post,
@@ -1706,6 +1814,52 @@ function receipts() {
       await loadWithConfirmedArgs();
       await startFetchingPosts();
     }
+
+    var throttleEmbedPostURIRequests;
+    var postsByURI;
+
+    function getPostByURI(postURI) {
+      if (!postsByURI) postsByURI = {};
+      if (!throttleEmbedPostURIRequests) throttleEmbedPostURIRequests = new Set();
+      if (postsByURI[postURI]) return postsByURI[postURI];
+
+      const br = breakFeedUri(postURI);
+      if (!br) return;
+
+      return postsByURI[postURI] = (async () => {
+        const MAX_POST_CONCURRENCY = 2;
+        let anyWait = false;
+        while (throttleEmbedPostURIRequests.size >= MAX_POST_CONCURRENCY) {
+          anyWait = true;
+          try {
+            await Promise.race(Array.from(throttleEmbedPostURIRequests));
+          } catch (_err) { }
+        }
+
+        if (anyWait) await new Promise(resolve => setTimeout(resolve, 400));
+
+        const retrievePromise = (async () => {
+
+          const postRecord = await atClient.com.atproto.repo.getRecord({
+            repo: unwrapShortDID(br.shortDID),
+            collection: 'app.bsky.feed.post',
+            rkey: br.postID
+          });
+
+          /** @type {*} */(postRecord.data.value).uri = postURI;
+
+          return postsByURI[postURI] = postRecord.data.value;
+        })();
+
+        throttleEmbedPostURIRequests.add(retrievePromise);
+        retrievePromise.finally(() => {
+          throttleEmbedPostURIRequests.delete(retrievePromise);
+        });
+
+        return await retrievePromise;
+      })();
+    }
+
 
     /** @type {Set} */
     var throttleProfileOutstandingRequests;
@@ -1842,6 +1996,9 @@ function receipts() {
           };
 
           fetcher.posts.push(/** @type {*} */(combinePostAndRecord));
+
+          if (!postsByURI) postsByURI = {};
+          postsByURI[p.uri] = combinePostAndRecord;
         }
 
         lastResponseTime = Date.now();
