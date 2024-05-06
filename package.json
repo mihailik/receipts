@@ -5,7 +5,7 @@
   "main": "index.js",
   "private": true,
   "scripts": {
-    "build": "rollup ./lib/lib.js --file ./lib.js --format iife --plugin @rollup/plugin-node-resolve --plugin @rollup/plugin-commonjs --context this",
+    "build": "rollup ./lib/lib.js --file ./lib.js --format umd --plugin @rollup/plugin-node-resolve --plugin @rollup/plugin-commonjs --plugin @rollup/plugin-json --plugin @rollup/plugin-babel --context this",
     "start": "node index.js"
   },
   "keywords": [],
@@ -14,9 +14,11 @@
   "dependencies": {
     "@atproto/api": "*",
     "@atproto/repo": "*",
+    "@rollup/plugin-babel": "^6.0.4",
     "@rollup/plugin-commonjs": "^25.0.7",
+    "@rollup/plugin-json": "^6.1.0",
     "@rollup/plugin-node-resolve": "^15.2.2",
-    "rollup": "^4.0.2",
-    "fuse.js": "^6.6.2"
+    "fuse.js": "^6.6.2",
+    "rollup": "^4.0.2"
   }
 }
