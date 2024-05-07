@@ -3,7 +3,11 @@
 
 function receipts() {
   function runInBrowser() {
+    /** @type {import('@atproto/api').BskyAgent} */
     var atClient;
+
+    /** @type {import('@atproto/api').BskyAgent} */
+    var atClientPublicApi;
 
     let overrideLang =
       /ua/i.test(location.host || '') || /ua/i.test(window.name || '') ||
@@ -84,6 +88,7 @@ function receipts() {
   position: relative;
   padding: 2em;
   padding-top: 1em;
+  z-index: 1;
 }
 
 .searchPane #searchINPUT {
@@ -349,19 +354,100 @@ function receipts() {
 }
 
 .resultsPane .post-list .post .post-content-line-image {
-  max-width: 20em;
+  max-width: 20vw;
   display: block;
   clear: both;
 }
 
+@media (max-width: 800px) {
+  .resultsPane .post-list .post .post-content-line-image {
+    max-width: 40vw;
+  }
+}
+
 .resultsPane .post-list .post .post-content-line-image-alt {
   max-width: 60%;
-  float: right;
+  float: left;
   font-size: 90%;
   background: #fff7ce;
   padding: 0.25em 0.7em;
   border: solid 1px #c7b554;
   margin: 0.5em 0;
+}
+
+.resultsPane .post-list .post .post-content-line-embed-quote {
+  max-width: 91%;
+  margin-left: 5%;
+  margin-top: 0.8em;
+  margin-bottom: 0.2em;
+  border: solid 1px silver;
+  padding: 0.5em;
+  zoom: 0.9;
+  border-radius: 0.5em;
+}
+
+.resultsPane .post-list .post .post-content-line-embed-external {
+  max-width: 91%;
+  margin-left: 5%;
+  margin-top: 0.8em;
+  margin-bottom: 0.2em;
+  border: solid 1px cornflowerblue;
+  padding: 0.5em;
+  border-radius: 0.5em;
+}
+
+.resultsPane .post-list .post .post-content-line-embed-external .post-content-line-embed-title {
+  font-weight: bold;
+}
+
+.resultsPane .post-list .post .post-content-line-embed-external .post-content-line-embed-title a {
+  color: inherit;
+}
+
+.resultsPane .post-list .post .post-content-line-embed-external .post-content-line-embed-url {
+  color: gray;
+  font-size: 90%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 0.5em;
+}
+
+.resultsPane .post-list .post .post-content-line-embed-external .post-content-line-embed-url a {
+  text-decoration: none;
+  color: inherit;
+}
+
+.resultsPane .post-list .post .post-content-line-embed-external .post-content-line-embed-external-thumb-wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.resultsPane .post-list .post .post-content-line-embed-external .post-content-line-embed-external-thumb-image {
+  max-width: 90%;
+  max-height: 50vh;
+}
+
+.resultsPane .post-list .post .post-content-line-embed-external .post-content-line-embed-external-thumb .post-content-line-embed-external-thumb-direct {
+  position: absolute;
+  display: block;
+  left: 0;
+  top: 0;
+  width: 100%; height: 100%;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+.resultsPane .post-list .post .post-content-line-embed-quote .post-content-line-embed-quote-load {
+  color: cornflowerblue;
+  font-style: italic;
+}
+
+.resultsPane .post-list .post .post-content-line-embed-quote .post {
+  margin-bottom: 0;
+  border-bottom: none;
+  padding-bottom: 0.5em;
 }
 
 .resultsPane .post-list .post-list-continue {
@@ -733,13 +819,61 @@ function receipts() {
         return;
       }
 
-      const bucket = await loadBucketFor(searchText);
-      if (dom.searchINPUT.value !== searchText || handleSearchType_debounceTimeout !== searchInstance) return;
+      const wordStarts = [...new Set([
+        ...searchText.split(/\s+/g).filter(chunk => chunk.length >= 3),
+        searchText,
+        searchText.replace(/[^\sa-z0-9]/ig, ''),
+        searchText.slice(0, searchText.length - 2) + '.' + searchText.slice(searchText.length - 2)
+      ])].filter(w => w.length >= 3);
 
-      const searchMatches = await findSearchMatches(searchText, bucket);
-      if (dom.searchINPUT.value !== searchText || handleSearchType_debounceTimeout !== searchInstance) return;
+      const searchRequests =
+        wordStarts.map(wordStart => ({ word: wordStart, type: 'searchActors', promise: atClientPublicApi.app.bsky.actor.searchActors({ q: wordStart }) }))
+          .concat(wordStarts.map(wordStart => ({ word: wordStart, type: 'searchActorsTypeahead', promise: atClientPublicApi.app.bsky.actor.searchActorsTypeahead({ q: wordStart }) })));
 
-      updateSearchMatches(searchText, searchMatches);
+      /** @type {{ [shortDID: string]: string | [shortHandle: string, displayName: string]; }} */
+      const searchPromiseResponses = {};
+      for (const { word, type, promise } of searchRequests) {
+        (async () => {
+          try {
+            const re = (await promise).data.actors;
+            if (dom.searchINPUT.value !== searchText || handleSearchType_debounceTimeout !== searchInstance) return;
+
+            let anyAdded = false;
+            if (re.length) {
+              for (const actor of re) {
+                const shortDID = shortenDID(actor.did);
+                if (!shortDID) continue;
+
+                if (searchPromiseResponses[shortDID]) continue;
+                const shortHandle = shortenHandle(actor.handle);
+                const displayName = actor.displayName;
+
+                if (!profileDetailsByShortDID?.[shortDID]) {
+                  if (!profileDetailsByShortDID) profileDetailsByShortDID = {};
+                  profileDetailsByShortDID[shortDID] = {
+                    shortDID,
+                    shortHandle,
+                    avatarUrl: actor.avatar,
+                    bannerUrl: undefined,
+                    displayName,
+                    description: actor.description
+                  };
+                }
+
+                searchPromiseResponses[shortDID] = displayName ? [shortHandle, displayName] : shortHandle;
+                anyAdded = true;
+              }
+
+              if (anyAdded)
+                updateSearchMatches(word, await findSearchMatches(word, searchPromiseResponses));
+            }
+          } catch (error) {
+            console.warn(
+              'Search with ' + type + ' for ' + JSON.stringify(word) + (word === searchText ? '' : ' of ' + JSON.stringify(searchText)) + ' failed: ',
+              error);
+          }
+        })();
+      }
     }
 
     /**
@@ -963,7 +1097,7 @@ function receipts() {
           parent: dom.statsPane
         });
 
-        const bucket = shortHandle ? await loadBucketFor(shortHandle || '') : {};
+        //const bucket = shortHandle ? await loadBucketFor(shortHandle || '') : {};
 
         await waitForLibrariesLoaded;
 
@@ -971,22 +1105,6 @@ function receipts() {
           // search for exact match, most of times it will land here
 
           const matchShortHandle = shortenHandle(shortHandle); // normalizing the input explicitly before matching
-
-          for (const pickShortDID in bucket) {
-            let pickShortHandle = bucket[pickShortDID];
-            let pickDisplayName;
-            if (Array.isArray(pickShortHandle)) {
-              pickDisplayName = pickShortHandle[1];
-              pickShortHandle = pickShortHandle[0];
-            }
-
-            if (pickShortHandle === matchShortHandle) {
-              shortDID = pickShortDID;
-              shortHandle = pickShortHandle;
-              displayName = pickDisplayName;
-              return;
-            }
-          }
 
           try {
             const resolved = await atClient.com.atproto.identity.resolveHandle({ handle: unwrapShortHandle(shortHandle) });
@@ -997,15 +1115,7 @@ function receipts() {
           } catch (err) {}
         }
 
-        const searchMatches = bucket && await findSearchMatches(shortHandle || shortDID, bucket);
-        if (!searchMatches?.length) { // if score too bad, flip out too
-          displaySearchPage(shortHandle || (shortDID ? unwrapShortDID(shortDID) : ''));
-          return;
-        }
-
-        shortDID = searchMatches[0].shortDID;
-        shortHandle = searchMatches[0].shortHandle;
-        displayName = searchMatches[0].displayName;
+        displaySearchPage(shortHandle || (shortDID ? unwrapShortDID(shortDID) : ''));
       }
 
       async function loadWithConfirmedArgs() {
@@ -1062,7 +1172,7 @@ function receipts() {
         };
 
         async function updateAvatarAndBio() {
-          const profileDetails = await getProfileDetailsByShortDID(shortDID);
+          const profileDetails = await getProfileDetailsByShortDID(shortDID, true /* needBanner */);
 
           dom.titleH2.textContent = profileDetails.displayName;
           if (profileDetails?.avatarUrl) {
@@ -1415,13 +1525,14 @@ function receipts() {
        *  post: import ('@atproto/api').AppBskyFeedPost.Record,
        *  textHighlights?: string,
        *  textLightHighlights?: string,
+       *  maxEmbedQuoteCount?: number
        * }} _
        */
-      function renderPost({ post, textHighlights, textLightHighlights }) {
+      function renderPost({ post, textHighlights, textLightHighlights, maxEmbedQuoteCount }) {
         /** @type {HTMLElement} */
         let expandThreadAboveElement = /** @type {*} */(undefined);
 
-        const postElem = renderPostCore({ post, withReply: post.reply, textHighlights, textLightHighlights });
+        const postElem = renderPostCore({ post, withReply: post.reply, textHighlights, textLightHighlights, maxEmbedQuoteCount });
 
         if (expandThreadAboveElement) {
           expandThreadAboveElement.onclick = toggleThreadAbove;
@@ -1460,7 +1571,8 @@ function receipts() {
               if (!parentPost) return;
 
               const parentPostElem = renderPostCore({
-                post: parentPost
+                post: parentPost,
+                maxEmbedQuoteCount
               });
               parentPostElem.className += ' injected-parent';
               expandThreadAboveElement.parentElement?.insertBefore(
@@ -1486,10 +1598,11 @@ function receipts() {
          *  post: import('@atproto/api').AppBskyFeedPost.Record & { uri?: string },
          *  textHighlights?: string,
          *  textLightHighlights?: string,
-         *  withReply?: unknown
+         *  withReply?: unknown,
+         *  maxEmbedQuoteCount?: number
          * }} _
          */
-        function renderPostCore({ post, withReply, textHighlights, textLightHighlights }) {
+        function renderPostCore({ post, withReply, textHighlights, textLightHighlights, maxEmbedQuoteCount }) {
           const postUri = breakFeedUri(post.uri);
 
           /** @type {HTMLElement | undefined} */
@@ -1501,10 +1614,20 @@ function receipts() {
           /** @type {HTMLAnchorElement | undefined} */
           let linkElem;
 
-          const authorOrPromise = getProfileDetailsByShortDID(postUri?.shortDID);
+          const authorOrPromise = getProfileDetailsByShortDID(postUri?.shortDID || '');
+
+          let embedImages = /** @type {*} */(post.embed?.images) || /** @type {*} */(post.embed?.media)?.images;
+          let embedPostURI = typeof maxEmbedQuoteCount !== 'number' || maxEmbedQuoteCount ?
+            /** @type {*} */(post.embed)?.record?.uri || /** @type {*} */(post.embed)?.record?.record?.uri : undefined;
+          let embedPostURIParsed = breakFeedUri(embedPostURI);
+          /** @type {HTMLElement | undefined} */
+          let  loadQuoteElem = undefined;
 
           const postElem = elem('div', {
             className: 'post',
+            onclick: () => {
+              console.log('post click ', post, { textHighlights, textLightHighlights });
+            },
             children: [
               elem('div', {
                 className: 'post-content',
@@ -1547,9 +1670,9 @@ function receipts() {
                       })
                     ]
                   }),
-                /** @type {*} */(post.embed?.images)?.length && elem('div', {
+                  embedImages?.length && elem('div', {
                   className: 'post-content-line' + (withReply ? ' asreply' : ''),
-                    children: /** @type {*} */(post.embed?.images).map(img => elem('div', {
+                    children: embedImages.map(img => elem('div', {
                       className: 'post-content-line-image-entry',
                       children: [
                         img.alt && elem('div', {
@@ -1563,6 +1686,77 @@ function receipts() {
                         })
                       ]
                     }))
+                  }),
+                  !embedPostURIParsed ? undefined : elem('div', {
+                    className: 'post-content-line' + (withReply ? ' asreply' : ''),
+                    children: [
+                      loadQuoteElem = elem('div', {
+                        className: 'post-content-line-embed-quote',
+                        children: [
+                          elem('div', {
+                            className: 'post-content-line-embed-quote-load',
+                            textContent: 'Quote...'
+                          })
+                        ]
+                      })
+                    ]
+                  }),
+                  !post.embed?.external ? undefined : elem('div', {
+                    className: 'post-content-line' + (withReply ? ' asreply' : ''),
+                    children: [
+                      elem('div', {
+                        className: 'post-content-line-embed-external',
+                        children: [
+                          elem('div', {
+                            className: 'post-content-line-embed-title',
+                            children: [
+                              elem('a', {
+                                href: /** @type {*} */(post.embed?.external).uri,
+                                textContent: /** @type {*} */(post.embed?.external).title
+                              })
+                            ]
+                          }),
+                          elem('div', {
+                            className: 'post-content-line-embed-url',
+                            children: [
+                              elem('a', {
+                                href: /** @type {*} */(post.embed?.external).uri,
+                                textContent: decodeURI(/** @type {*} */(post.embed?.external).uri)
+                              })
+                            ]
+                          }),
+                          /** @type {*} */(post.embed?.external).alt && elem('div', {
+                            className: 'post-content-line-embed-external-description',
+                            textContent: /** @type {*} */(post.embed?.external).description
+                          }),
+                          /** @type {*} */(post.embed?.external).thumb && elem('div', {
+                            className: 'post-content-line-embed-external-thumb',
+                            children: [
+                              elem('a', {
+                                children: [
+                                  elem('span', {
+                                    className: 'post-content-line-embed-external-thumb-wrap',
+                                    children: [
+                                      elem('img', {
+                                        className: 'post-content-line-embed-external-thumb-image',
+                                        src: 'https://bsky.social/xrpc/com.atproto.sync.getBlob?did=' +
+                                          unwrapShortDID(postUri?.shortDID) + '&cid=' + /** @type {*} */(post.embed?.external).thumb.ref
+                                      }),
+                                      elem('span', {
+                                        className: 'post-content-line-embed-external-thumb-direct',
+                                        title: 'url(' + /** @type {*} */(post.embed?.external).uri + ')',
+                                        backgroundImage: 'url(' + /** @type {*} */(post.embed?.external).uri + ')'
+                                      })
+                                    ]
+                                  })
+                                ],
+                                href: /** @type {*} */(post.embed?.external).uri,
+                              })
+                            ]
+                          })
+                        ]
+                      }),
+                    ]
                   })
                 ]
               })
@@ -1591,6 +1785,27 @@ function receipts() {
             })()
           }
 
+          if (embedPostURIParsed && loadQuoteElem) {
+            (async () => {
+              const quotedPostRecord = await getPostByURI(embedPostURI);
+
+              console.log(
+                'post ', post,
+                'quoted ',
+                quotedPostRecord);
+
+              const quotedPostElem = renderPost({
+                post: quotedPostRecord,
+                maxEmbedQuoteCount: typeof maxEmbedQuoteCount === 'number' ?
+                  maxEmbedQuoteCount - 1 :
+                  4
+              });
+
+              loadQuoteElem.textContent = '';
+              loadQuoteElem.appendChild(quotedPostElem);
+            })();
+          }
+
           return postElem;
         }
       }
@@ -1600,12 +1815,65 @@ function receipts() {
       await startFetchingPosts();
     }
 
+    var throttleEmbedPostURIRequests;
+    var postsByURI;
+
+    function getPostByURI(postURI) {
+      if (!postsByURI) postsByURI = {};
+      if (!throttleEmbedPostURIRequests) throttleEmbedPostURIRequests = new Set();
+      if (postsByURI[postURI]) return postsByURI[postURI];
+
+      const br = breakFeedUri(postURI);
+      if (!br) return;
+
+      return postsByURI[postURI] = (async () => {
+        const MAX_POST_CONCURRENCY = 2;
+        let anyWait = false;
+        while (throttleEmbedPostURIRequests.size >= MAX_POST_CONCURRENCY) {
+          anyWait = true;
+          try {
+            await Promise.race(Array.from(throttleEmbedPostURIRequests));
+          } catch (_err) { }
+        }
+
+        if (anyWait) await new Promise(resolve => setTimeout(resolve, 400));
+
+        const retrievePromise = (async () => {
+
+          const postRecord = await atClient.com.atproto.repo.getRecord({
+            repo: unwrapShortDID(br.shortDID),
+            collection: 'app.bsky.feed.post',
+            rkey: br.postID
+          });
+
+          /** @type {*} */(postRecord.data.value).uri = postURI;
+
+          return postsByURI[postURI] = postRecord.data.value;
+        })();
+
+        throttleEmbedPostURIRequests.add(retrievePromise);
+        retrievePromise.finally(() => {
+          throttleEmbedPostURIRequests.delete(retrievePromise);
+        });
+
+        return await retrievePromise;
+      })();
+    }
+
+
     /** @type {Set} */
     var throttleProfileOutstandingRequests;
 
-    function getProfileDetailsByShortDID(shortDID) {
+    /**
+     * @param {string} shortDID
+     * @param {boolean=} needBanner
+     */
+    function getProfileDetailsByShortDID(shortDID, needBanner) {
       if (!profileDetailsByShortDID) profileDetailsByShortDID = {};
-      if (profileDetailsByShortDID[shortDID]) return profileDetailsByShortDID[shortDID];
+      const existingCacheMatch = profileDetailsByShortDID[shortDID];
+      if (existingCacheMatch && (
+        !needBanner || isPromise(existingCacheMatch) || existingCacheMatch.bannerUrl))
+        return existingCacheMatch;
 
       if (!throttleProfileOutstandingRequests) throttleProfileOutstandingRequests = new Set();
 
@@ -1728,6 +1996,9 @@ function receipts() {
           };
 
           fetcher.posts.push(/** @type {*} */(combinePostAndRecord));
+
+          if (!postsByURI) postsByURI = {};
+          postsByURI[p.uri] = combinePostAndRecord;
         }
 
         lastResponseTime = Date.now();
@@ -1780,9 +2051,12 @@ function receipts() {
       // @ts-ignore
       receipts = () => {
         const oldXrpc = 'https://bsky.social/xrpc';
-        // const newXrpc = 'https://bsky.network/xrpc';
+        const newXrpc = 'https://bsky.network/xrpc';
+        const publicApiXrpc = 'https://public.api.bsky.app/';
 
-        atClient = new atproto_api.BskyAgent({ service: 'https://bsky.social/xrpc' });
+        atClient = new atproto_api.BskyAgent({ service: oldXrpc });
+        atClientPublicApi = new atproto_api.BskyAgent({ service: publicApiXrpc });
+        patchAtClient(atClient);
         resolve(undefined);
       }
     });
@@ -1792,6 +2066,23 @@ function receipts() {
     const dom = initSearchPageDOM();
 
     detectModeAndShow();
+
+    /**
+     * @param {import('@atproto/api').BskyAgent} atClient
+     */
+    function patchAtClient(atClient) {
+      // find all clients to patch
+      for (const key in atClient.com.atproto) {
+        /** @type {typeof atClient.com.atproto.admin} */
+        const ns = atClient.com.atproto[key];
+        const baseClient = ns._service?.xrpc?.baseClient;
+        if (baseClient) {
+          baseClient.lex.assertValidXrpcOutput = function (lexUri, value, ...rest) {
+            return true;
+          };
+        }
+      }
+    }
 
   }
 
