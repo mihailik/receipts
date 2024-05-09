@@ -272,6 +272,7 @@ function receipts() {
   display: inline-block;
   font-size: 86%;
   padding: 0.2em 0.5em;
+  margin-bottom: 0.2em;
   border: solid 1px #c0d3f6;
   border-radius: 0.4em;
   color: cornflowerblue;
@@ -345,6 +346,7 @@ function receipts() {
 .resultsPane .post-list .post .post-content-line-text .post-text-paragraph {
   margin: 0;
   padding: 0;
+  overflow-wrap: anywhere;
 }
 
 .resultsPane .post-list .post .post-content-line-text .post-text-extra-line-break {
