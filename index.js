@@ -252,7 +252,7 @@ function receipts() {
   border-bottom: dotted 2px #e2e2e2;
 }
 
-.resultsPane .post-list .post.injected-parent {
+.resultsPane .post-list .post .injected-parent {
   margin-left: 3em;
   font-size: 80%;
   border-left: solid 1px cornflowerblue;
@@ -262,7 +262,7 @@ function receipts() {
   border-bottom: solid 1px #9cbfff;
 }
 
-.resultsPane .post-list .post.injected-parent:first-child {
+.resultsPane .post-list .post .injected-parent:first-child {
   border-top: solid 1px cornflowerblue;
   border-top-left-radius: 0.5em;
   border-top-right-radius: 0.5em;
@@ -337,8 +337,18 @@ function receipts() {
 }
 
 .resultsPane .post-list .post .post-content-line-text {
+  display: block;
+  margin-left: 3.1em;
   padding-top: 0.25em;
-  white-space: pre-wrap;
+}
+
+.resultsPane .post-list .post .post-content-line-text .post-text-paragraph {
+  margin: 0;
+  padding: 0;
+}
+
+.resultsPane .post-list .post .post-content-line-text .post-text-extra-line-break {
+  height: 0.75em;
 }
 
 .resultsPane .post-list .post .post-content-line-text .post-content-line-text-highlight {
@@ -353,15 +363,18 @@ function receipts() {
   border-radius: 0.2em;
 }
 
+.resultsPane .post-list .post .post-content-line-image-entry {
+}
+
 .resultsPane .post-list .post .post-content-line-image {
-  max-width: 20vw;
+  max-width: 20%;
   display: block;
   clear: both;
 }
 
 @media (max-width: 800px) {
   .resultsPane .post-list .post .post-content-line-image {
-    max-width: 40vw;
+    max-width: 40%;
   }
 }
 
@@ -376,8 +389,7 @@ function receipts() {
 }
 
 .resultsPane .post-list .post .post-content-line-embed-quote {
-  max-width: 91%;
-  margin-left: 5%;
+  margin-left: 2em;
   margin-top: 0.8em;
   margin-bottom: 0.2em;
   border: solid 1px silver;
@@ -387,8 +399,7 @@ function receipts() {
 }
 
 .resultsPane .post-list .post .post-content-line-embed-external {
-  max-width: 91%;
-  margin-left: 5%;
+  margin-left: 2em;
   margin-top: 0.8em;
   margin-bottom: 0.2em;
   border: solid 1px cornflowerblue;
@@ -405,15 +416,20 @@ function receipts() {
 }
 
 .resultsPane .post-list .post .post-content-line-embed-external .post-content-line-embed-url {
+  position: relative;
   color: gray;
   font-size: 90%;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  margin-bottom: 0.5em;
+  height: 1.5em;
 }
 
 .resultsPane .post-list .post .post-content-line-embed-external .post-content-line-embed-url a {
+  display: block;
+  position: absolute;
+  left: 0; top: 0; width: 100%;
+  height: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   text-decoration: none;
   color: inherit;
 }
@@ -1315,6 +1331,9 @@ function receipts() {
           let anyNew = lastRenderedPostCacheCount !== postCache.length;
           lastRenderedPostCacheCount = postCache.length;
 
+          let verifyOverflowAtIndex = 5 + Math.random() * 20;
+          let overflowReached = false;
+
           for (let i = 0; i < searchResult.length; i++) {
             const { post, rank, textHighlights, textLightHighlights } = searchResult[i];
             if (!post.dom || post.textHighlights !== textHighlights || post.textLightHighlights !== textLightHighlights) {
@@ -1331,6 +1350,18 @@ function receipts() {
             } else {
               postList.appendChild(post.dom);
               anyNew = true;
+            }
+
+            if (i >= verifyOverflowAtIndex) {
+              verifyOverflowAtIndex += 5 + Math.random() * 20;
+              const postBounds = post.dom.getBoundingClientRect();
+              if (postBounds.bottom > window.innerHeight * 2) {
+                overflowReached = true;
+                while (postList.children.length > i) {
+                  postList.removeChild(postList.children[postList.children.length - 1]);
+                }
+                break;
+              }
             }
           }
 
@@ -1350,7 +1381,7 @@ function receipts() {
               }
             }));
           } else {
-            postList.appendChild(elem('div', {
+            const showMoreElem = elem('div', {
               className: 'post-list-continue',
               textContent:
                 overrideLang == 'ua' ?
@@ -1368,11 +1399,22 @@ function receipts() {
                 });
                 reflectRecords();
               }
-            }));
+            });
+            postList.appendChild(showMoreElem);
+            whenVisible(showMoreElem, () => {
+              fetcher.fetchMore().then(() => {
+                  reflectRecords();
+                });
+                reflectRecords();
+            });
           }
 
           if (anyNew) {
-            handleScrollCore();
+            if (!overflowReached) {
+              setTimeout(() => {
+                handleScrollCore();
+              }, 1);
+            }
           }
         }
         
@@ -1468,38 +1510,55 @@ function receipts() {
        * @param {((index: number) => string | false | null | undefined) | undefined} classAt
        */
       function renderTextWithHighlight(text, classAt) {
-        if (!text || !classAt) return [text];
+        if (!text) return [text];
 
-        const result = [];
-        /** @type {string | undefined} */
-        let clusterClass;
-        let clusterStart = 0;
-        for (let i = 1; i < text.length; i++) {
-          const className = classAt(i);
-          if (!i || className === clusterClass) continue;
+        /** @type {HTMLElement[]} */
+        const paragraphs = [];
+        let lineStartPos = 0;
+        for (const lnText of text.split(/\n/g)) {
+          if (paragraphs.length) lineStartPos++;
+          if (!lnText) {
+            paragraphs.push(elem('div', 'post-text-extra-line-break'));
+            continue;
+          }
 
-          result.push(
-            !clusterClass ?
-              text.slice(clusterStart, i) :
-              elem('span', {
-                className: clusterClass,
-                textContent: text.slice(clusterStart, i)
-              }));
-          clusterStart = i;
-          clusterClass = className || undefined;
+          const lineResult = [];
+          /** @type {string | undefined} */
+          let clusterClass;
+          let clusterStart = 0;
+          for (let i = 1; i < lnText.length; i++) {
+            const className = typeof classAt === 'function' ? classAt(lineStartPos + i) : undefined;
+            if (!i || className === clusterClass) continue;
+
+            lineResult.push(
+              !clusterClass ?
+                lnText.slice(clusterStart, i).replace('  ', ' \u00a0'):
+                elem('span', {
+                  className: clusterClass,
+                  textContent: lnText.slice(clusterStart, i).replace('  ', ' \u00a0')
+                }));
+            clusterStart = i;
+            clusterClass = className || undefined;
+          }
+
+          if (clusterStart < lnText.length) {
+            lineResult.push(
+              !clusterClass ?
+                lnText.slice(clusterStart).replace('  ', ' \u00a0') :
+                elem('span', {
+                  className: clusterClass,
+                  textContent: lnText.slice(clusterStart).replace('  ', ' \u00a0')
+                }));
+          }
+
+          paragraphs.push(
+            elem('p', {
+              className: 'post-text-paragraph',
+              children: lineResult
+            }));
         }
 
-        if (clusterStart < text.length) {
-          result.push(
-            !clusterClass ?
-              text.slice(clusterStart) :
-              elem('span', {
-                className: clusterClass,
-                textContent: text.slice(clusterStart)
-              }));
-        }
-
-        return result;
+        return paragraphs;
       }
 
       function renderPostTime(time) {
@@ -1574,9 +1633,12 @@ function receipts() {
                 post: parentPost,
                 maxEmbedQuoteCount
               });
-              parentPostElem.className += ' injected-parent';
+              const injectedParent = elem('div', {
+                className: ' injected-parent',
+                children: [parentPostElem]
+              });
               expandThreadAboveElement.parentElement?.insertBefore(
-                parentPostElem,
+                injectedParent,
                 prevElem);
               
               parentCount++;
@@ -1586,7 +1648,7 @@ function receipts() {
                   parentCount + ' previous⤵';
 
               parent = parentPost.reply?.parent;
-              prevElem = parentPostElem;
+              prevElem = injectedParent;
             }
           })().finally(() => {
             togglePromise = undefined;
@@ -1764,7 +1826,7 @@ function receipts() {
           });
 
           if (loadAvatarElem) {
-            (async () => {
+            whenVisible(loadAvatarElem, async () => {
               const profileDetails = isPromise(authorOrPromise) ? await authorOrPromise : authorOrPromise;
               if (profileDetails?.avatarUrl) {
                 loadAvatarElem.className += ' loaded';
@@ -1782,11 +1844,11 @@ function receipts() {
               if (linkElem && postUri) {
                 linkElem.href = 'https://bsky.app/profile/' + unwrapShortHandle(profileDetails.shortHandle) + '/post/' + postUri.postID;
               }
-            })()
+            });
           }
 
           if (embedPostURIParsed && loadQuoteElem) {
-            (async () => {
+            whenVisible(loadQuoteElem, async () => {
               const quotedPostRecord = await getPostByURI(embedPostURI);
 
               console.log(
@@ -1803,7 +1865,7 @@ function receipts() {
 
               loadQuoteElem.textContent = '';
               loadQuoteElem.appendChild(quotedPostElem);
-            })();
+            });
           }
 
           return postElem;
@@ -1836,7 +1898,7 @@ function receipts() {
           } catch (_err) { }
         }
 
-        if (anyWait) await new Promise(resolve => setTimeout(resolve, 400));
+        if (anyWait) await new Promise(resolve => setTimeout(resolve, 600));
 
         const retrievePromise = (async () => {
 
@@ -2084,6 +2146,27 @@ function receipts() {
       }
     }
 
+    /**
+      * @param {HTMLElement} elem
+      * @param {() => void} callback
+      */
+    function whenVisible(elem, callback) {
+      setTimeout(() => {
+        const observer = new IntersectionObserver((entries, observer) => {
+          entries.forEach(entry => {
+            if (entry.isIntersecting) {
+              observer.disconnect();
+              setTimeout(() => {
+                callback();
+              }, 1);
+              return;
+            }
+          });
+        });
+
+        observer.observe(elem);
+      }, 1);
+    }
   }
 
 
